@@ -16,3 +16,5 @@ The working platform for students and children. It allows to organize classes, h
 1. Our own video chat (instead of WebRTC, use Zoom or Google Meet)
 2. Billing system
 3. Teacher marketplace
+
+- [MVP goals](./docs/mvp.md)
