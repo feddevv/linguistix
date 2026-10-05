@@ -4,15 +4,22 @@
     "migrate": "dotenv -e ../../.env -- node-pg-migrate",
     "build": "",
     "start": "",
-    "dev": ""
+    "dev": "",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
   },
   "dependencies": {
     "pg": "^8.23.1"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/pg": "^8.23.1",
     "dotenv-cli": "^11.0.0",
+    "eslint": "^10.12.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.13.0",
     "node-pg-migrate": "^9.0.0",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "typescript-eslint": "^8.71.0"
   }
 }
