@@ -5,7 +5,7 @@
     "migrate": "dotenv -e ../../.env -- node-pg-migrate",
     "build": "tsc",
     "start": "node ./dist/server.js",
-    "dev": "nodemon --exec tsx src/server.ts",
+    "dev": "nodemon --exec tsx --env-file=../../.env src/server.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
   },
