@@ -1,7 +1,10 @@
 {
   "name": "api",
   "scripts": {
-    "migrate": "dotenv -e ../../.env -- node-pg-migrate"
+    "migrate": "dotenv -e ../../.env -- node-pg-migrate",
+    "build": "",
+    "start": "",
+    "dev": ""
   },
   "dependencies": {
     "pg": "^8.23.1"
