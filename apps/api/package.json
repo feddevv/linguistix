@@ -10,6 +10,8 @@
     "lint:fix": "eslint . --fix"
   },
   "dependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "bcrypt": "^6.0.0",
     "express": "^5.2.1",
     "pg": "^8.23.1"
   },
