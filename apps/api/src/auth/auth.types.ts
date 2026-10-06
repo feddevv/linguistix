@@ -1,4 +1,4 @@
-export type Role = 'student' | 'teacher';
+import type { Role } from '@repo/shared';
 
 export interface UserRow {
   id: number;
@@ -19,10 +19,3 @@ export interface UserDomain {
   createdAt: Date;
   role: Role;
 }
-
-export type UserInputDTO = Pick<
-  UserDomain,
-  'firstName' | 'lastName' | 'email' | 'password' | 'role'
->;
-
-export type UserOutputDTO = Pick<UserDomain, 'id' | 'firstName' | 'lastName' | 'email' | 'role'>;

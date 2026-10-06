@@ -1,19 +1,12 @@
 import { DatabaseError } from 'pg';
 import { pg } from '../db/pg.js';
 import { toUserDomain } from '../utils/mappers.js';
-import type { Role, UserRow } from './auth.types.js';
+import type { UserRow } from './auth.types.js';
 import { HttpError } from '../errors/HttpError.js';
-
-interface CreateUserData {
-  firstName: string;
-  lastName: string;
-  passwordHash: string;
-  email: string;
-  role: Role;
-}
+import type { RegisterInput } from '@repo/shared';
 
 class User {
-  async createUser({ firstName, lastName, email, passwordHash, role }: CreateUserData) {
+  async createUser({ firstName, lastName, email, password, role }: RegisterInput) {
     try {
       const user = await pg.query<UserRow>(
         `
@@ -21,7 +14,7 @@ class User {
 				VALUES ($1, $2, $3, $4, $5)
         RETURNING *;
 			`,
-        [firstName, lastName, passwordHash, email, role],
+        [firstName, lastName, password, email, role],
       );
 
       return toUserDomain(user.rows[0]!);

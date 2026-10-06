@@ -21,5 +21,3 @@ export const registerSchema = z.object({
     error: () => 'Role can only be either "student" or "teacher"',
   }),
 });
-
-export type RegisterInput = z.infer<typeof registerSchema>;

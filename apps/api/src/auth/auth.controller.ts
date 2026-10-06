@@ -1,10 +1,10 @@
 import type { Request, Response } from 'express';
-import type { UserInputDTO, UserOutputDTO } from './auth.types.js';
+import type { RegisterInput, RegisterResponseDTO } from '@repo/shared';
 import * as authService from './auth.service.js';
 
 export async function register(
-  req: Request<unknown, unknown, UserInputDTO>,
-  res: Response<UserOutputDTO>,
+  req: Request<unknown, unknown, RegisterInput>,
+  res: Response<RegisterResponseDTO>,
 ) {
   const user = await authService.register(req.body);
 
