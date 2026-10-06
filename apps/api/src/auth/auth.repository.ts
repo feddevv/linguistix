@@ -2,6 +2,7 @@ import { DatabaseError } from 'pg';
 import { pg } from '../db/pg.js';
 import { toUserDomain } from '../utils/mappers.js';
 import type { Role, UserRow } from './auth.types.js';
+import { HttpError } from '../errors/HttpError.js';
 
 interface CreateUserData {
   firstName: string;
@@ -27,7 +28,7 @@ class User {
     } catch (err) {
       if (err instanceof DatabaseError) {
         if (err.code === '23505') {
-          throw new Error('User with this email already exists');
+          throw new HttpError(409, 'User with this email already exists');
         }
       }
 
