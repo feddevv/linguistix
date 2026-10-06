@@ -8,4 +8,6 @@ app.use(json());
 
 app.use('/api', authRouter);
 
-app.get('/api', () => {});
+app.use((err, req, res, next) => {
+  res.json(err);
+});
