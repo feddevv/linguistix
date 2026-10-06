@@ -19,3 +19,10 @@ export interface UserDomain {
   createdAt: Date;
   role: Role;
 }
+
+export type UserInputDTO = Pick<
+  UserDomain,
+  'firstName' | 'lastName' | 'email' | 'password' | 'role'
+>;
+
+export type UserOutputDTO = Pick<UserDomain, 'id' | 'firstName' | 'lastName' | 'email' | 'role'>;
