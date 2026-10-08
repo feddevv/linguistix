@@ -228,7 +228,6 @@ Vocabulary entries collected in a room, each with its meaning and an example sen
 
 These are things the current schema does that probably aren't intended:
 
-4. **Foreign-key columns are nullable.** For example, `room_members.user_id`, `lessons.room_id` and `submissions.assignment_id` accept `NULL`, which leaves orphan rows possible.
 5. **No uniqueness on submissions.** Nothing stops a student from submitting the same assignment several times, if that matters.
 6. **Missing comma before `CONSTRAINT` in `assignments`.** The check is parsed as a column constraint on `max_grade` rather than a table constraint. PostgreSQL accepts this and the check still works, but adding the comma makes the intent clear.
 7. **`submited` typo** in `submission_status`. See [Enum Types](#enum-types).
