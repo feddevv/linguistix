@@ -1,11 +1,21 @@
 import express, { json, type Express } from 'express';
 import { router as authRouter } from './auth/auth.route.js';
 import { globalErrorHandler } from './middlewares/errors.js';
+import swaggerUi from 'swagger-ui-express';
+import fs from 'node:fs';
+import YAML from 'yaml';
+import path from 'node:path';
 
 export const app: Express = express();
 
 // Middlewares
 app.use(json());
+
+// Swagger UI
+const filePath = path.resolve(process.cwd(), 'docs/api/openapi.yaml');
+const spec = fs.readFileSync(filePath, 'utf-8');
+const parsedSpec = YAML.parse(spec);
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(parsedSpec));
 
 // Routers
 app.use('/api', authRouter);
