@@ -8,7 +8,7 @@ export async function register(
 ) {
   const user = await authService.register(req.body);
 
-  res.json({
+  res.status(201).json({
     id: user.id,
     firstName: user.firstName,
     lastName: user.lastName,
