@@ -38,7 +38,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         meeting_url TEXT,
         teacher_id UUID REFERENCES users(id) ON DELETE CASCADE,
         room_id UUID REFERENCES rooms(id) ON DELETE CASCADE,
-        scheduled_at DATE NOT NULL DEFAULT CURRENT_DATE,
+        scheduled_at TIMESTAMPZ NOT NULL DEFAULT CURRENT_DATE,
         ends_at DATE NOT NULL,
         status lesson_status NOT NULL DEFAULT 'scheduled'
       );
