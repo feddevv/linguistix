@@ -21,7 +21,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         id UUID PRIMARY KEY DEFAULT uuidv7(),
         room_name VARCHAR(100) NOT NULL,
         meeting_url TEXT,
-        owner_id UUID REFERENCES users(id) ON DELETE RESTRICT,
+        owner_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
         created_at DATE NOT NULL DEFAULT CURRENT_DATE
       );
 
@@ -39,7 +39,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         id UUID PRIMARY KEY DEFAULT uuidv7(),
         meeting_url TEXT,
         teacher_id UUID REFERENCES users(id) ON DELETE CASCADE,
-        room_id UUID REFERENCES rooms(id) ON DELETE CASCADE,
+        room_id UUID NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
         scheduled_at TIMESTAMPZ NOT NULL DEFAULT CURRENT_DATE,
         ends_at DATE NOT NULL,
         status lesson_status NOT NULL DEFAULT 'scheduled'
@@ -52,7 +52,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         title VARCHAR(255),
         content TEXT,
         teacher_id UUID REFERENCES users(id) ON DELETE SET NULL,
-        room_id UUID REFERENCES rooms(id) ON DELETE CASCADE,
+        room_id UUID NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
         assigned_at DATE,
         due_to DATE,
         status assignment_status NOT NULL DEFAULT 'draft',
@@ -71,8 +71,8 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
       CREATE TABLE IF NOT EXISTS "submissions" (
         id UUID PRIMARY KEY DEFAULT uuidv7(),
         content TEXT NOT NULL,
-        student_id UUID REFERENCES users(id) ON DELETE CASCADE,
-        assignment_id UUID REFERENCES assignments(id) ON DELETE CASCADE,
+        student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        assignment_id UUID NOT NULL REFERENCES assignments(id) ON DELETE CASCADE,
         submitted_at DATE NOT NULL DEFAULT CURRENT_DATE,
         status submission_status NOT NULL DEFAULT 'pending',
         feedback TEXT,
@@ -86,7 +86,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         meaning TEXT NOT NULL,
         room_id UUID REFERENCES rooms(id) ON DELETE CASCADE,
         content_sentence TEXT NOT NULL,
-        created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        created_by UUID NOT NULL REFERENCES users(id) ON DELETE SET NULL,
         created_at DATE NOT NULL DEFAULT CURRENT_DATE
       );
     `,
