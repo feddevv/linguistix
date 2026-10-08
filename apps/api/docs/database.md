@@ -228,7 +228,6 @@ Vocabulary entries collected in a room, each with its meaning and an example sen
 
 These are things the current schema does that probably aren't intended:
 
-5. **No uniqueness on submissions.** Nothing stops a student from submitting the same assignment several times, if that matters.
 6. **Missing comma before `CONSTRAINT` in `assignments`.** The check is parsed as a column constraint on `max_grade` rather than a table constraint. PostgreSQL accepts this and the check still works, but adding the comma makes the intent clear.
 7. **`submited` typo** in `submission_status`. See [Enum Types](#enum-types).
 8. **Roles are not enforced in the database.** `lessons.teacher_id`, `assignments.teacher_id` and `submissions.student_id` can point to a user of any role. Role checks have to happen in the application.

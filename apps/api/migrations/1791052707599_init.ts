@@ -56,7 +56,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         assigned_at DATE,
         due_to DATE,
         status assignment_status NOT NULL DEFAULT 'draft',
-        max_grade SMALLINT
+        max_grade SMALLINT,
 
         CONSTRAINT chk_published_field_not_null CHECK (
           status = 'draft' OR (
