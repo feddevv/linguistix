@@ -40,7 +40,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         meeting_url TEXT,
         teacher_id UUID REFERENCES users(id) ON DELETE CASCADE,
         room_id UUID NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
-        scheduled_at TIMESTAMPZ NOT NULL DEFAULT CURRENT_DATE,
+        scheduled_at TIMESTAMP NOT NULL DEFAULT CURRENT_DATE,
         ends_at DATE NOT NULL,
         status lesson_status NOT NULL DEFAULT 'scheduled'
       );
@@ -66,7 +66,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         )
       );
 
-      CREATE TYPE submission_status AS ENUM ('pending', 'submited', 'needs_revision', 'reviewed');
+      CREATE TYPE submission_status AS ENUM ('pending', 'submitted', 'needs_revision', 'reviewed');
 
       CREATE TABLE IF NOT EXISTS "submissions" (
         id UUID PRIMARY KEY DEFAULT uuidv7(),
@@ -77,7 +77,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         status submission_status NOT NULL DEFAULT 'pending',
         feedback TEXT,
         grade SMALLINT,
-        reviewed_at TIMESTAMPZ,
+        reviewed_at TIMESTAMP,
 
         UNIQUE(student_id, assignment_id)
       );
