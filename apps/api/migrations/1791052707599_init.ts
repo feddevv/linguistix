@@ -27,8 +27,8 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
 
       CREATE TABLE IF NOT EXISTS "room_members" (
         id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-        room_id UUID REFERENCES rooms(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        room_id UUID NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
 
         UNIQUE(user_id, room_id)
       );
