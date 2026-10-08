@@ -1,20 +1,30 @@
 # linguistix
 
-# 1. Key conception
-The working platform for students and children. It allows to organize classes, homework passing and assigning gracefully. It also includes classes scheduling, creating meetings and dictionary with interval repetition. This platform allows teachers to avoid using 5-6 different services and use 1 instead.
+An all-in-one platform for private language tutors and their students. Teachers can run classes, schedule lessons, assign and review homework, and keep a shared vocabulary with spaced repetition, all in one place instead of 5–6 separate services.
 
-# 2. Target audience
-- **Primary audience:** Private tutors and their students
-- **Lesson format**: 1-to-1 (primarily for MVP) and groups
-- **Language interface / focus**: English with future scaling to any languages in the future
+- [About the project](./docs/about.md)
+- [MVP scope & features](./docs/mvp.md)
 
-# 3. Value Proposition
-1. All-in-one hub
-2. Dictionary inside the platform with saving words from lessons
+## Repository structure
 
-# 4. Out of the scope for the MVP
-1. Our own video chat (instead of WebRTC, use Zoom or Google Meet)
-2. Billing system
-3. Teacher marketplace
+This is a pnpm monorepo:
 
-- [MVP goals](./docs/mvp.md)
+| Path              | Description                                   |
+| ----------------- | --------------------------------------------- |
+| `apps/api`        | Backend API — [README](./apps/api/README.md)  |
+| `apps/web`        | Frontend app — [README](./apps/web/README.md) |
+| `packages/shared` | Code shared between apps                      |
+| `docs`            | Product documentation                         |
+
+## Getting started
+
+Requirements: Node.js, pnpm, Docker.
+
+```bash
+pnpm install          # install dependencies for all workspaces
+docker compose up -d  # start PostgreSQL
+```
+
+Database settings are read from the root `.env` (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `DB_PORT`).
+
+See each app's README for how to run it.
