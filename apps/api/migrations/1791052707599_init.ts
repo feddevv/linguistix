@@ -75,7 +75,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         status submission_status NOT NULL DEFAULT 'pending',
         feedback TEXT,
         grade SMALLINT,
-        reviewed_at DATE NOT NULL
+        reviewed_at TIMESTAMPZ
       );
 
       CREATE TABLE IF NOT EXISTS "words" (
