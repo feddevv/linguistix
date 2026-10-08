@@ -5,7 +5,7 @@
     "migrate": "node-pg-migrate",
     "migrate:dev": "dotenv -e ../../.env -- pnpm run migrate",
     "migrate:test": "dotenv -e ../../.env.test -- pnpm run migrate",
-    "build": "tsc",
+    "build": "pnpm --filter @repo/shared build && tsc",
     "start": "node ./dist/server.js",
     "dev": "nodemon --exec tsx --env-file=../../.env src/server.ts",
     "test": "pnpm run migrate:test up && dotenv -e ../../.env.test -- vitest",
