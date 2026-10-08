@@ -8,15 +8,15 @@ Linguistix uses **PostgreSQL**, with migrations managed by [`node-pg-migrate`](h
 
 ## Overview
 
-| Table          | Purpose                                                        |
-| -------------- | -------------------------------------------------------------- |
-| `users`        | Every account on the platform, either a student or a teacher.  |
-| `rooms`        | Classrooms or study groups, each with one owner.               |
-| `room_members` | Join table linking users to the rooms they belong to.          |
-| `lessons`      | Scheduled live sessions in a room, run by a teacher.           |
-| `assignments`  | Homework a teacher sets for a room.                            |
+| Table          | Purpose                                                           |
+| -------------- | ----------------------------------------------------------------- |
+| `users`        | Every account on the platform, either a student or a teacher.     |
+| `rooms`        | Classrooms or study groups, each with one owner.                  |
+| `room_members` | Join table linking users to the rooms they belong to.             |
+| `lessons`      | Scheduled live sessions in a room, run by a teacher.              |
+| `assignments`  | Homework a teacher sets for a room.                               |
 | `submissions`  | A student's answer to an assignment, with its grade and feedback. |
-| `words`        | Vocabulary entries collected in a room.                        |
+| `words`        | Vocabulary entries collected in a room.                           |
 
 ## ER Diagram
 
@@ -105,12 +105,12 @@ erDiagram
 
 ## Enum Types
 
-| Type                | Values                                                  | Used by               |
-| ------------------- | ------------------------------------------------------- | --------------------- |
-| `user_role`         | `student`, `teacher`                                    | `users.role`          |
-| `lesson_status`     | `scheduled`, `completed`, `canceled`, `in_progress`     | `lessons.status`      |
-| `assignment_status` | `draft`, `published`, `closed`                          | `assignments.status`  |
-| `submission_status` | `pending`, `submited`, `needs_revision`, `reviewed`     | `submissions.status`  |
+| Type                | Values                                              | Used by              |
+| ------------------- | --------------------------------------------------- | -------------------- |
+| `user_role`         | `student`, `teacher`                                | `users.role`         |
+| `lesson_status`     | `scheduled`, `completed`, `canceled`, `in_progress` | `lessons.status`     |
+| `assignment_status` | `draft`, `published`, `closed`                      | `assignments.status` |
+| `submission_status` | `pending`, `submited`, `needs_revision`, `reviewed` | `submissions.status` |
 
 > `submission_status` spells `submited` with one "t". Application code has to use that exact spelling.
 
@@ -120,27 +120,27 @@ erDiagram
 
 Every account on the platform. The `role` column decides whether the user is a student or a teacher.
 
-| Column       | Type           | Null | Default        | Notes                  |
-| ------------ | -------------- | ---- | -------------- | ---------------------- |
-| `id`         | `UUID`         | no   | `uuidv7()`     | Primary key            |
-| `first_name` | `VARCHAR(100)` | no   |                |                        |
-| `last_name`  | `VARCHAR(100)` | no   |                |                        |
-| `email`      | `VARCHAR(255)` | no   |                | Unique                 |
+| Column       | Type           | Null | Default        | Notes                    |
+| ------------ | -------------- | ---- | -------------- | ------------------------ |
+| `id`         | `UUID`         | no   | `uuidv7()`     | Primary key              |
+| `first_name` | `VARCHAR(100)` | no   |                |                          |
+| `last_name`  | `VARCHAR(100)` | no   |                |                          |
+| `email`      | `VARCHAR(255)` | no   |                | Unique                   |
 | `password`   | `VARCHAR(255)` | no   |                | Stores the password hash |
-| `created_at` | `DATE`         | no   | `CURRENT_DATE` |                        |
-| `role`       | `user_role`    | no   |                |                        |
+| `created_at` | `DATE`         | no   | `CURRENT_DATE` |                          |
+| `role`       | `user_role`    | no   |                |                          |
 
 ### `rooms`
 
 A classroom or study group. Lessons, assignments and vocabulary all belong to a room.
 
-| Column        | Type           | Null | Default        | Notes                                      |
-| ------------- | -------------- | ---- | -------------- | ------------------------------------------ |
-| `id`          | `UUID`         | no   | `uuidv7()`     | Primary key                                |
-| `room_name`   | `VARCHAR(100)` | no   |                |                                            |
-| `meeting_url` | `TEXT`         | yes  |                | Default video-call link for the room       |
-| `owner_id`    | `UUID`         | yes  |                | FK → `users.id`, `ON DELETE RESTRICT`      |
-| `created_at`  | `DATE`         | no   | `CURRENT_DATE` |                                            |
+| Column        | Type           | Null | Default        | Notes                                 |
+| ------------- | -------------- | ---- | -------------- | ------------------------------------- |
+| `id`          | `UUID`         | no   | `uuidv7()`     | Primary key                           |
+| `room_name`   | `VARCHAR(100)` | no   |                |                                       |
+| `meeting_url` | `TEXT`         | yes  |                | Default video-call link for the room  |
+| `owner_id`    | `UUID`         | yes  |                | FK → `users.id`, `ON DELETE RESTRICT` |
+| `created_at`  | `DATE`         | no   | `CURRENT_DATE` |                                       |
 
 Because of `RESTRICT`, you cannot delete a user who still owns a room. Delete the room or transfer ownership first.
 
@@ -148,11 +148,11 @@ Because of `RESTRICT`, you cannot delete a user who still owns a room. Delete th
 
 Many-to-many join table between `users` and `rooms`.
 
-| Column    | Type     | Null | Default                       | Notes                                |
-| --------- | -------- | ---- | ----------------------------- | ------------------------------------ |
+| Column    | Type     | Null | Default                        | Notes                                |
+| --------- | -------- | ---- | ------------------------------ | ------------------------------------ |
 | `id`      | `BIGINT` | no   | `GENERATED ALWAYS AS IDENTITY` | Primary key                          |
-| `user_id` | `UUID`   | yes  |                               | FK → `users.id`, `ON DELETE CASCADE` |
-| `room_id` | `UUID`   | yes  |                               | FK → `rooms.id`, `ON DELETE CASCADE` |
+| `user_id` | `UUID`   | yes  |                                | FK → `users.id`, `ON DELETE CASCADE` |
+| `room_id` | `UUID`   | yes  |                                | FK → `rooms.id`, `ON DELETE CASCADE` |
 
 ### `lessons`
 
@@ -172,17 +172,17 @@ A live session in a room, run by a teacher.
 
 Homework a teacher sets for a room. Draft assignments can be incomplete. Any other status requires all content fields to be filled.
 
-| Column        | Type                | Null | Default   | Notes                                 |
-| ------------- | ------------------- | ---- | --------- | ------------------------------------- |
-| `id`          | `UUID`              | no   | `uuidv7()`| Primary key                           |
-| `title`       | `VARCHAR(255)`      | yes* |           |                                       |
-| `content`     | `TEXT`              | yes* |           |                                       |
-| `teacher_id`  | `UUID`              | yes  |           | FK → `users.id`, `ON DELETE SET NULL` |
-| `room_id`     | `UUID`              | yes  |           | FK → `rooms.id`, `ON DELETE CASCADE`  |
-| `assigned_at` | `DATE`              | yes* |           |                                       |
-| `due_to`      | `DATE`              | yes* |           | Due date                              |
-| `status`      | `assignment_status` | no   | `'draft'` |                                       |
-| `max_grade`   | `SMALLINT`          | yes* |           |                                       |
+| Column        | Type                | Null | Default    | Notes                                 |
+| ------------- | ------------------- | ---- | ---------- | ------------------------------------- |
+| `id`          | `UUID`              | no   | `uuidv7()` | Primary key                           |
+| `title`       | `VARCHAR(255)`      | yes* |            |                                       |
+| `content`     | `TEXT`              | yes* |            |                                       |
+| `teacher_id`  | `UUID`              | yes  |            | FK → `users.id`, `ON DELETE SET NULL` |
+| `room_id`     | `UUID`              | yes  |            | FK → `rooms.id`, `ON DELETE CASCADE`  |
+| `assigned_at` | `DATE`              | yes* |            |                                       |
+| `due_to`      | `DATE`              | yes* |            | Due date                              |
+| `status`      | `assignment_status` | no   | `'draft'`  |                                       |
+| `max_grade`   | `SMALLINT`          | yes* |            |                                       |
 
 \* **`chk_published_field_not_null`**: when `status <> 'draft'`, the columns `title`, `content`, `assigned_at`, `due_to` and `max_grade` must all be non-null.
 
@@ -218,18 +218,16 @@ Vocabulary entries collected in a room, each with its meaning and an example sen
 
 ## Delete Behaviour
 
-| When this is deleted… | Effect                                                                                                            |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| When this is deleted… | Effect                                                                                                                                                                          |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **User**              | Blocked if the user owns a room. Otherwise their memberships, lessons and submissions are deleted, and their assignments and words keep existing with the author set to `NULL`. |
-| **Room**              | Its memberships, lessons, assignments (and so their submissions) and words are deleted.                           |
-| **Assignment**        | Its submissions are deleted.                                                                                      |
+| **Room**              | Its memberships, lessons, assignments (and so their submissions) and words are deleted.                                                                                         |
+| **Assignment**        | Its submissions are deleted.                                                                                                                                                    |
 
 ## Known Issues
 
 These are things the current schema does that probably aren't intended:
 
-1. **`submissions.reviewed_at` is `NOT NULL` with no default.** You can't insert a new, unreviewed submission without inventing a review date. It should probably be nullable.
-2. **Times are stored as `DATE`.** `lessons.scheduled_at` and `lessons.ends_at` (and every `*_at` column) drop the time of day, so a lesson can't be scheduled at a specific hour. Consider `TIMESTAMPTZ`.
 3. **`room_members` has no `UNIQUE (user_id, room_id)`.** The same user can be added to a room more than once.
 4. **Foreign-key columns are nullable.** For example, `room_members.user_id`, `lessons.room_id` and `submissions.assignment_id` accept `NULL`, which leaves orphan rows possible.
 5. **No uniqueness on submissions.** Nothing stops a student from submitting the same assignment several times, if that matters.
