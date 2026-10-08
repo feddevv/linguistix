@@ -19,6 +19,7 @@ export const registerSchema = z.object({
     .email({
       error: (iss) => (!iss.input ? 'Email is required' : 'Invalid email format'),
     })
+    .toLowerCase()
     .max(255, 'Email should not exceed 255 characters'),
   password: z
     .string({
