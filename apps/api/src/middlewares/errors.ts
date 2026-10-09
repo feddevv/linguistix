@@ -16,7 +16,7 @@ export function globalErrorHandler(err: unknown, req: Request, res: Response, ne
   } else if (err instanceof ZodError) {
     statusCode = 400;
     message = err.issues[0]?.message || 'Validation error';
-  }
+  } else console.error(err);
 
   res.status(statusCode).json({
     message,
