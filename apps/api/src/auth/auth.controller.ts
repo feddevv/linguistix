@@ -14,11 +14,13 @@ export async function register(
   const user = await authService.register(req.body);
 
   res.status(201).json({
-    id: user.id,
-    firstName: user.firstName,
-    lastName: user.lastName,
-    email: user.email,
-    role: user.role,
+    user: {
+      id: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      role: user.role,
+    },
   });
 }
 
@@ -43,10 +45,12 @@ export async function login(
   });
 
   res.json({
-    id: data.user.id,
-    firstName: data.user.firstName,
-    lastName: data.user.lastName,
-    email: data.user.email,
-    role: data.user.role,
+    user: {
+      id: data.user.id,
+      firstName: data.user.firstName,
+      lastName: data.user.lastName,
+      email: data.user.email,
+      role: data.user.role,
+    },
   });
 }
