@@ -18,5 +18,18 @@ services:
       - pgdata:/var/lib/postgresql
       - ./init-test-db.sh:/docker-entrypoint-initdb.d/init-test-db.sh
 
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@postgres_db:5432/postgres_db}
+    ports:
+      - '${PORT:-3000}:3000'
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+    command: sh -c "pnpm --filter api migrate up && node apps/api/dist/server.js"
+
 volumes:
   pgdata:
