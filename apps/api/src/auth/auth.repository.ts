@@ -6,7 +6,13 @@ import { HttpError } from '../errors/HttpError.js';
 import type { RegisterInput } from '@repo/shared';
 
 class User {
-  async createUser({ firstName, lastName, email, password, role }: RegisterInput) {
+  async createUser({
+    firstName,
+    lastName,
+    email,
+    password,
+    role,
+  }: Omit<RegisterInput, 'confirmPassword'>) {
     try {
       const user = await pg.query<UserRow>(
         `
