@@ -2,37 +2,39 @@
 
 Linguistix uses **PostgreSQL**, with migrations managed by [`node-pg-migrate`](https://github.com/salsita/node-pg-migrate).
 
-- Migrations live in `migrations/`. Run them with `npm run migrate up`.
+- Migrations live in `migrations/`. From `apps/api`, run them with `pnpm migrate:dev up` (uses `../../.env`) or `pnpm migrate:test up` (uses `../../.env.test`).
 - The current schema is defined in a single migration: `migrations/1791052707599_init.ts`.
-- Primary keys are UUID v7 (`DEFAULT uuidv7()`), so IDs sort by creation time. The built-in `uuidv7()` function needs **PostgreSQL 18+**.
+- Most primary keys are UUID v7 (`DEFAULT uuidv7()`), so IDs sort by creation time. The built-in `uuidv7()` function needs **PostgreSQL 18+**. The `room_members` and `refresh_tokens` tables use a `BIGINT` identity column instead.
 
 ## Overview
 
-| Table          | Purpose                                                           |
-| -------------- | ----------------------------------------------------------------- |
-| `users`        | Every account on the platform, either a student or a teacher.     |
-| `rooms`        | Classrooms or study groups, each with one owner.                  |
-| `room_members` | Join table linking users to the rooms they belong to.             |
-| `lessons`      | Scheduled live sessions in a room, run by a teacher.              |
-| `assignments`  | Homework a teacher sets for a room.                               |
-| `submissions`  | A student's answer to an assignment, with its grade and feedback. |
-| `words`        | Vocabulary entries collected in a room.                           |
+| Table            | Purpose                                                           |
+| ---------------- | ----------------------------------------------------------------- |
+| `users`          | Every account on the platform, either a student or a teacher.     |
+| `rooms`          | Classrooms or study groups, each with one owner.                  |
+| `room_members`   | Join table linking users to the rooms they belong to.             |
+| `lessons`        | Scheduled live sessions in a room, run by a teacher.              |
+| `assignments`    | Homework a teacher sets for a room.                               |
+| `submissions`    | A student's answer to an assignment, with its grade and feedback. |
+| `words`          | Vocabulary entries, collected in a room or not tied to any room.  |
+| `refresh_tokens` | Hashed refresh tokens issued to users at login.                   |
 
 ## ER Diagram
 
 ```mermaid
 erDiagram
-    users ||--o{ rooms        : "owns"
-    users ||--o{ room_members : "joins"
-    rooms ||--o{ room_members : "has"
-    users ||--o{ lessons      : "teaches"
-    rooms ||--o{ lessons      : "hosts"
-    users ||--o{ assignments  : "creates"
-    rooms ||--o{ assignments  : "contains"
+    users ||--o{ rooms          : "owns"
+    users ||--o{ room_members   : "joins"
+    rooms ||--o{ room_members   : "has"
+    users |o--o{ lessons        : "teaches"
+    rooms ||--o{ lessons        : "hosts"
+    users |o--o{ assignments    : "creates"
+    rooms ||--o{ assignments    : "contains"
     assignments ||--o{ submissions : "receives"
-    users ||--o{ submissions  : "submits"
-    rooms ||--o{ words        : "collects"
-    users ||--o{ words        : "adds"
+    users ||--o{ submissions    : "submits"
+    rooms |o--o{ words          : "collects"
+    users ||--o{ words          : "adds"
+    users ||--o{ refresh_tokens : "holds"
 
     users {
         uuid      id PK
@@ -63,7 +65,7 @@ erDiagram
         text          meeting_url
         uuid          teacher_id FK
         uuid          room_id FK
-        date          scheduled_at
+        timestamp     scheduled_at
         date          ends_at
         lesson_status status
     }
@@ -89,7 +91,7 @@ erDiagram
         submission_status status
         text              feedback
         smallint          grade
-        date              reviewed_at
+        timestamp         reviewed_at
     }
 
     words {
@@ -101,18 +103,23 @@ erDiagram
         uuid    created_by FK
         date    created_at
     }
+
+    refresh_tokens {
+        bigint    id PK
+        text      refresh_token_hash
+        timestamp expires_at
+        uuid      user_id FK
+    }
 ```
 
 ## Enum Types
 
-| Type                | Values                                              | Used by              |
-| ------------------- | --------------------------------------------------- | -------------------- |
-| `user_role`         | `student`, `teacher`                                | `users.role`         |
-| `lesson_status`     | `scheduled`, `completed`, `canceled`, `in_progress` | `lessons.status`     |
-| `assignment_status` | `draft`, `published`, `closed`                      | `assignments.status` |
-| `submission_status` | `pending`, `submited`, `needs_revision`, `reviewed` | `submissions.status` |
-
-> `submission_status` spells `submited` with one "t". Application code has to use that exact spelling.
+| Type                | Values                                               | Used by              |
+| ------------------- | ---------------------------------------------------- | -------------------- |
+| `user_role`         | `student`, `teacher`                                 | `users.role`         |
+| `lesson_status`     | `scheduled`, `completed`, `canceled`, `in_progress`  | `lessons.status`     |
+| `assignment_status` | `draft`, `published`, `closed`                       | `assignments.status` |
+| `submission_status` | `pending`, `submitted`, `needs_revision`, `reviewed` | `submissions.status` |
 
 ## Tables
 
@@ -132,27 +139,27 @@ Every account on the platform. The `role` column decides whether the user is a s
 
 ### `rooms`
 
-A classroom or study group. Lessons, assignments and vocabulary all belong to a room.
+A classroom or study group. Lessons and assignments always belong to a room; vocabulary may.
 
 | Column        | Type           | Null | Default        | Notes                                 |
 | ------------- | -------------- | ---- | -------------- | ------------------------------------- |
 | `id`          | `UUID`         | no   | `uuidv7()`     | Primary key                           |
 | `room_name`   | `VARCHAR(100)` | no   |                |                                       |
 | `meeting_url` | `TEXT`         | yes  |                | Default video-call link for the room  |
-| `owner_id`    | `UUID`         | yes  |                | FK → `users.id`, `ON DELETE RESTRICT` |
+| `owner_id`    | `UUID`         | no   |                | FK → `users.id`, `ON DELETE RESTRICT` |
 | `created_at`  | `DATE`         | no   | `CURRENT_DATE` |                                       |
 
 Because of `RESTRICT`, you cannot delete a user who still owns a room. Delete the room or transfer ownership first.
 
 ### `room_members`
 
-Many-to-many join table between `users` and `rooms`.
+Many-to-many join table between `users` and `rooms`. A user can join a given room only once: `UNIQUE (user_id, room_id)`.
 
 | Column    | Type     | Null | Default                        | Notes                                |
 | --------- | -------- | ---- | ------------------------------ | ------------------------------------ |
 | `id`      | `BIGINT` | no   | `GENERATED ALWAYS AS IDENTITY` | Primary key                          |
-| `user_id` | `UUID`   | yes  |                                | FK → `users.id`, `ON DELETE CASCADE` |
-| `room_id` | `UUID`   | yes  |                                | FK → `rooms.id`, `ON DELETE CASCADE` |
+| `user_id` | `UUID`   | no   |                                | FK → `users.id`, `ON DELETE CASCADE` |
+| `room_id` | `UUID`   | no   |                                | FK → `rooms.id`, `ON DELETE CASCADE` |
 
 ### `lessons`
 
@@ -163,10 +170,12 @@ A live session in a room, run by a teacher.
 | `id`           | `UUID`          | no   | `uuidv7()`     | Primary key                               |
 | `meeting_url`  | `TEXT`          | yes  |                | Overrides the room's link for this lesson |
 | `teacher_id`   | `UUID`          | yes  |                | FK → `users.id`, `ON DELETE CASCADE`      |
-| `room_id`      | `UUID`          | yes  |                | FK → `rooms.id`, `ON DELETE CASCADE`      |
-| `scheduled_at` | `DATE`          | no   | `CURRENT_DATE` |                                           |
+| `room_id`      | `UUID`          | no   |                | FK → `rooms.id`, `ON DELETE CASCADE`      |
+| `scheduled_at` | `TIMESTAMP`     | no   | `CURRENT_DATE` | Default is midnight of the current day    |
 | `ends_at`      | `DATE`          | no   |                |                                           |
 | `status`       | `lesson_status` | no   | `'scheduled'`  |                                           |
+
+> `scheduled_at` is a `TIMESTAMP` but `ends_at` is a `DATE`, so a lesson's end has no time of day.
 
 ### `assignments`
 
@@ -178,7 +187,7 @@ Homework a teacher sets for a room. Draft assignments can be incomplete. Any oth
 | `title`       | `VARCHAR(255)`      | yes* |            |                                       |
 | `content`     | `TEXT`              | yes* |            |                                       |
 | `teacher_id`  | `UUID`              | yes  |            | FK → `users.id`, `ON DELETE SET NULL` |
-| `room_id`     | `UUID`              | yes  |            | FK → `rooms.id`, `ON DELETE CASCADE`  |
+| `room_id`     | `UUID`              | no   |            | FK → `rooms.id`, `ON DELETE CASCADE`  |
 | `assigned_at` | `DATE`              | yes* |            |                                       |
 | `due_to`      | `DATE`              | yes* |            | Due date                              |
 | `status`      | `assignment_status` | no   | `'draft'`  |                                       |
@@ -188,23 +197,23 @@ Homework a teacher sets for a room. Draft assignments can be incomplete. Any oth
 
 ### `submissions`
 
-A student's answer to an assignment, plus the teacher's review.
+A student's answer to an assignment, plus the teacher's review. A student can submit to a given assignment only once: `UNIQUE (student_id, assignment_id)`.
 
 | Column          | Type                | Null | Default        | Notes                                      |
 | --------------- | ------------------- | ---- | -------------- | ------------------------------------------ |
 | `id`            | `UUID`              | no   | `uuidv7()`     | Primary key                                |
 | `content`       | `TEXT`              | no   |                |                                            |
-| `student_id`    | `UUID`              | yes  |                | FK → `users.id`, `ON DELETE CASCADE`       |
-| `assignment_id` | `UUID`              | yes  |                | FK → `assignments.id`, `ON DELETE CASCADE` |
+| `student_id`    | `UUID`              | no   |                | FK → `users.id`, `ON DELETE CASCADE`       |
+| `assignment_id` | `UUID`              | no   |                | FK → `assignments.id`, `ON DELETE CASCADE` |
 | `submitted_at`  | `DATE`              | no   | `CURRENT_DATE` |                                            |
 | `status`        | `submission_status` | no   | `'pending'`    |                                            |
 | `feedback`      | `TEXT`              | yes  |                | Teacher's comments                         |
 | `grade`         | `SMALLINT`          | yes  |                |                                            |
-| `reviewed_at`   | `DATE`              | no   |                |                                            |
+| `reviewed_at`   | `TIMESTAMP`         | yes  |                | Set when the teacher reviews it            |
 
 ### `words`
 
-Vocabulary entries collected in a room, each with its meaning and an example sentence.
+Vocabulary entries, each with its meaning and an example sentence. A word with `room_id = NULL` is not tied to any room.
 
 | Column             | Type           | Null | Default        | Notes                                 |
 | ------------------ | -------------- | ---- | -------------- | ------------------------------------- |
@@ -213,13 +222,26 @@ Vocabulary entries collected in a room, each with its meaning and an example sen
 | `meaning`          | `TEXT`         | no   |                |                                       |
 | `room_id`          | `UUID`         | yes  |                | FK → `rooms.id`, `ON DELETE CASCADE`  |
 | `content_sentence` | `TEXT`         | no   |                | Example sentence that uses the term   |
-| `created_by`       | `UUID`         | yes  |                | FK → `users.id`, `ON DELETE SET NULL` |
+| `created_by`       | `UUID`         | no   |                | FK → `users.id`, `ON DELETE SET NULL` |
 | `created_at`       | `DATE`         | no   | `CURRENT_DATE` |                                       |
+
+> `created_by` is `NOT NULL` but its foreign key is `ON DELETE SET NULL`. Deleting a user who added any word therefore fails with a not-null violation.
+
+### `refresh_tokens`
+
+Refresh tokens issued to a user. Only a hash of each token is stored.
+
+| Column               | Type        | Null | Default                        | Notes                                |
+| -------------------- | ----------- | ---- | ------------------------------ | ------------------------------------ |
+| `id`                 | `BIGINT`    | no   | `GENERATED ALWAYS AS IDENTITY` | Primary key                          |
+| `refresh_token_hash` | `TEXT`      | no   |                                | Hash of the refresh token            |
+| `expires_at`         | `TIMESTAMP` | no   |                                |                                      |
+| `user_id`            | `UUID`      | no   |                                | FK → `users.id`, `ON DELETE CASCADE` |
 
 ## Delete Behaviour
 
-| When this is deleted… | Effect                                                                                                                                                                          |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **User**              | Blocked if the user owns a room. Otherwise their memberships, lessons and submissions are deleted, and their assignments and words keep existing with the author set to `NULL`. |
-| **Room**              | Its memberships, lessons, assignments (and so their submissions) and words are deleted.                                                                                         |
-| **Assignment**        | Its submissions are deleted.                                                                                                                                                    |
+| When this is deleted… | Effect                                                                                                                                                                                                       |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **User**              | Blocked if the user owns a room or added any word. Otherwise their memberships, lessons, submissions and refresh tokens are deleted, and their assignments keep existing with `teacher_id` set to `NULL`. |
+| **Room**              | Its memberships, lessons, assignments (and so their submissions) and words are deleted.                                                                                                                      |
+| **Assignment**        | Its submissions are deleted.                                                                                                                                                                                 |

@@ -8,8 +8,14 @@ info:
 
     ## Error format
     Every non-2xx response has the same shape: `{ "message": string }`.
-    Validation errors report **only the first** failing rule, checked in the
-    order `firstName` → `lastName` → `email` → `password` → `role`.
+    Validation errors report **only the first** failing rule. Fields are checked
+    in the order in which they are listed in each request schema; cross-field
+    rules (such as the password confirmation match) run last.
+
+    ## Authentication
+    `POST /api/auth/login` sets two `HttpOnly` cookies, `accessToken` and
+    `refreshToken`, that hold signed JWTs. Browsers send them automatically on
+    later requests.
 
 servers:
   - url: http://localhost:3000
@@ -29,13 +35,20 @@ paths:
       description: |
         Creates a new user account with the role `student` or `teacher`.
 
-        - String fields `firstName`, `lastName` and `password` are **trimmed** before
-          their length is validated, and the trimmed value is stored.
+        - Fields are validated in the order `firstName` → `lastName` → `email` →
+          `password` → `confirmPassword` → `role`; only the first error is returned.
+        - String fields `firstName`, `lastName`, `password` and `confirmPassword` are
+          **trimmed** before their length is validated, and the trimmed value is stored.
+        - `confirmPassword` must equal `password` after both are trimmed. The
+          `Passwords don't match` error is returned only when every other rule passes.
+          `confirmPassword` itself is not stored.
         - `email` is **not** trimmed. It is lower-cased before it is stored, so it is
           unique regardless of letter case (`Ada@Example.com` and `ada@example.com` are
           treated as the same address).
         - The password is stored as a bcrypt hash and is never returned.
         - Unknown properties (for example `id`) are silently ignored.
+        - The user is **not** logged in; no cookies are set. Call `POST /api/auth/login`
+          afterwards.
       requestBody:
         $ref: '#/components/requestBodies/RegisterRequest'
       responses:
@@ -45,6 +58,40 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '409':
           $ref: '#/components/responses/EmailConflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      security: []
+      summary: Log in
+      description: |
+        Authenticates a user by email and password and sets the session cookies.
+
+        - Fields are validated in the order `email` → `password` with the same rules
+          as in `POST /api/auth/register`; only the first error is returned.
+        - `email` is lower-cased before lookup, so login is case-insensitive.
+          `password` is trimmed before it is compared.
+        - On success, the response sets two cookies, both `HttpOnly`, `SameSite=Lax`
+          and `Path=/`, plus `Secure` when the server runs in production:
+          - `accessToken`: JWT valid for 15 minutes (`Max-Age=900`).
+          - `refreshToken`: JWT valid for 15 days (`Max-Age=1296000`).
+        - Unknown properties are silently ignored.
+      requestBody:
+        $ref: '#/components/requestBodies/LoginRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/LoginSuccess'
+        '400':
+          $ref: '#/components/responses/LoginBadRequest'
+        '404':
+          $ref: '#/components/responses/InvalidCredentials'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
         '415':
@@ -105,10 +152,22 @@ components:
       writeOnly: true
       example: correct-horse-battery
 
+    ConfirmPassword:
+      type: string
+      format: password
+      description: |
+        Repeats `password`. Leading and trailing whitespace is trimmed before
+        validation; the trimmed value must be 6–255 characters long and equal to
+        the trimmed `password`.
+      minLength: 6
+      maxLength: 255
+      writeOnly: true
+      example: correct-horse-battery
+
     RegisterInput:
       type: object
       description: Payload for creating a new user account.
-      required: [firstName, lastName, email, password, role]
+      required: [firstName, lastName, email, password, confirmPassword, role]
       properties:
         firstName:
           $ref: '#/components/schemas/FirstName'
@@ -118,8 +177,20 @@ components:
           $ref: '#/components/schemas/Email'
         password:
           $ref: '#/components/schemas/Password'
+        confirmPassword:
+          $ref: '#/components/schemas/ConfirmPassword'
         role:
           $ref: '#/components/schemas/Role'
+
+    LoginInput:
+      type: object
+      description: Credentials for logging in.
+      required: [email, password]
+      properties:
+        email:
+          $ref: '#/components/schemas/Email'
+        password:
+          $ref: '#/components/schemas/Password'
 
     UserDTO:
       type: object
@@ -138,8 +209,20 @@ components:
         role:
           $ref: '#/components/schemas/Role'
 
+    UserResponse:
+      type: object
+      description: Response that wraps the public user representation.
+      required: [user]
+      additionalProperties: false
+      properties:
+        user:
+          $ref: '#/components/schemas/UserDTO'
+
     RegisterResponse:
-      $ref: '#/components/schemas/UserDTO'
+      $ref: '#/components/schemas/UserResponse'
+
+    LoginResponse:
+      $ref: '#/components/schemas/UserResponse'
 
     Error:
       type: object
@@ -168,6 +251,7 @@ components:
                 lastName: Lovelace
                 email: ada.lovelace@example.com
                 password: correct-horse-battery
+                confirmPassword: correct-horse-battery
                 role: student
             teacher:
               summary: Register a teacher
@@ -176,7 +260,19 @@ components:
                 lastName: Hopper
                 email: Grace.Hopper@Navy.mil
                 password: C0b0l-1959!
+                confirmPassword: C0b0l-1959!
                 role: teacher
+
+    LoginRequest:
+      required: true
+      description: User credentials. Must be a JSON object, UTF-8 encoded, at most 100 KB.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LoginInput'
+          example:
+            email: ada.lovelace@example.com
+            password: correct-horse-battery
 
   responses:
     RegisterSuccess:
@@ -189,19 +285,44 @@ components:
             student:
               summary: Student created
               value:
-                id: 0199c4a2-7e3b-7a51-9d2f-3b8e6c1a4f07
-                firstName: Ada
-                lastName: Lovelace
-                email: ada.lovelace@example.com
-                role: student
+                user:
+                  id: 0199c4a2-7e3b-7a51-9d2f-3b8e6c1a4f07
+                  firstName: Ada
+                  lastName: Lovelace
+                  email: ada.lovelace@example.com
+                  role: student
             teacher:
               summary: Teacher created (email lower-cased)
               value:
-                id: 0199c4a3-1c05-7f2e-8b6a-5d41e9f03c2b
-                firstName: Grace
-                lastName: Hopper
-                email: grace.hopper@navy.mil
-                role: teacher
+                user:
+                  id: 0199c4a3-1c05-7f2e-8b6a-5d41e9f03c2b
+                  firstName: Grace
+                  lastName: Hopper
+                  email: grace.hopper@navy.mil
+                  role: teacher
+
+    LoginSuccess:
+      description: Logged in. The session cookies are set.
+      headers:
+        Set-Cookie:
+          description: |
+            Two cookies are set, one per `Set-Cookie` header:
+            `accessToken` (15 minutes) and `refreshToken` (15 days). Both are
+            `HttpOnly; SameSite=Lax; Path=/`, and `Secure` in production.
+          schema:
+            type: string
+          example: accessToken=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...; Max-Age=900; Path=/; HttpOnly; SameSite=Lax
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LoginResponse'
+          example:
+            user:
+              id: 0199c4a2-7e3b-7a51-9d2f-3b8e6c1a4f07
+              firstName: Ada
+              lastName: Lovelace
+              email: ada.lovelace@example.com
+              role: student
 
     BadRequest:
       description: |
@@ -225,7 +346,7 @@ components:
               value:
                 message: Expected double-quoted property name in JSON at position 20 (line 1 column 21)
             firstNameRequired:
-              summary: firstName is missing or null
+              summary: firstName is missing, null or another falsy value (for example `0`)
               value:
                 message: First name is required
             firstNameNotString:
@@ -241,7 +362,7 @@ components:
               value:
                 message: First name should not exceed 100 characters
             lastNameRequired:
-              summary: lastName is missing or null
+              summary: lastName is missing, null or another falsy value (for example `0`)
               value:
                 message: Last name is required
             lastNameNotString:
@@ -257,7 +378,7 @@ components:
               value:
                 message: Last name should not exceed 100 characters
             emailRequired:
-              summary: email is missing or null
+              summary: email is missing, null or an empty string
               value:
                 message: Email is required
             emailInvalid:
@@ -269,7 +390,7 @@ components:
               value:
                 message: Email should not exceed 255 characters
             passwordRequired:
-              summary: password is missing or null
+              summary: password is missing, null or another falsy value (for example `0`)
               value:
                 message: Password is required
             passwordNotString:
@@ -284,14 +405,76 @@ components:
               summary: password is longer than 255 characters after trimming
               value:
                 message: Password should not exceed 255 characters
+            confirmPasswordRequired:
+              summary: confirmPassword is missing, null or another falsy value (for example `0`)
+              value:
+                message: Password confirmation is required
+            confirmPasswordNotString:
+              summary: confirmPassword is not a string
+              value:
+                message: Password confirmation should be a string
+            confirmPasswordTooShort:
+              summary: confirmPassword is shorter than 6 characters after trimming
+              value:
+                message: Password confirmation should be at least 6 characters long
+            confirmPasswordTooLong:
+              summary: confirmPassword is longer than 255 characters after trimming
+              value:
+                message: Password confirmation should not exceed 255 characters
             roleRequired:
-              summary: role is missing or null
+              summary: role is missing, null or an empty string
               value:
                 message: Role is required
             roleInvalid:
               summary: role is not `student` or `teacher` (case-sensitive)
               value:
                 message: Role 'admin' doesn't exist
+            passwordsDontMatch:
+              summary: confirmPassword differs from password after trimming (checked last)
+              value:
+                message: Passwords don't match
+
+    LoginBadRequest:
+      description: |
+        The request body is missing, is not valid JSON, is not a JSON object, or
+        fails validation. Only the first validation error is returned.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            missingBody:
+              summary: Body is missing or not JSON (for example, wrong Content-Type)
+              value:
+                message: 'Invalid input: expected object, received undefined'
+            emailRequired:
+              summary: email is missing, null or an empty string
+              value:
+                message: Email is required
+            emailInvalid:
+              summary: email is not a string or is not a valid address
+              value:
+                message: Invalid email format
+            emailTooLong:
+              summary: email is longer than 255 characters
+              value:
+                message: Email should not exceed 255 characters
+            passwordRequired:
+              summary: password is missing, null or another falsy value (for example `0`)
+              value:
+                message: Password is required
+            passwordNotString:
+              summary: password is not a string
+              value:
+                message: Password should be a string
+            passwordTooShort:
+              summary: password is shorter than 6 characters after trimming
+              value:
+                message: Password should be at least 6 characters long
+            passwordTooLong:
+              summary: password is longer than 255 characters after trimming
+              value:
+                message: Password should not exceed 255 characters
 
     EmailConflict:
       description: A user with this email (case-insensitive) already exists.
@@ -301,6 +484,17 @@ components:
             $ref: '#/components/schemas/Error'
           example:
             message: User with this email already exists
+
+    InvalidCredentials:
+      description: |
+        No user has this email, or the password is wrong. The same message is
+        returned in both cases.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            message: Email or password is incorrect
 
     PayloadTooLarge:
       description: The request body is larger than 100 KB.
@@ -328,7 +522,9 @@ components:
                 message: unsupported content encoding "compress"
 
     InternalServerError:
-      description: Unexpected server error, such as the database being unavailable.
+      description: |
+        Unexpected server error, such as the database being unavailable or the
+        token signing key not being configured.
       content:
         application/json:
           schema:
