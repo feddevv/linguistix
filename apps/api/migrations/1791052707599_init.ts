@@ -13,7 +13,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         last_name VARCHAR(100) NOT NULL,
         email VARCHAR(255) NOT NULL UNIQUE,
         password VARCHAR(255) NOT NULL,
-        created_at DATE NOT NULL DEFAULT CURRENT_DATE,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_DATE,
         role user_role NOT NULL
       );
 
@@ -41,7 +41,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         teacher_id UUID REFERENCES users(id) ON DELETE CASCADE,
         room_id UUID NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
         scheduled_at TIMESTAMP NOT NULL DEFAULT CURRENT_DATE,
-        ends_at DATE NOT NULL,
+        ends_at TIMESTAMP NOT NULL,
         status lesson_status NOT NULL DEFAULT 'scheduled'
       );
 
@@ -53,8 +53,8 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         content TEXT,
         teacher_id UUID REFERENCES users(id) ON DELETE SET NULL,
         room_id UUID NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
-        assigned_at DATE,
-        due_to DATE,
+        assigned_at TIMESTAMP,
+        due_to TIMESTAMP,
         status assignment_status NOT NULL DEFAULT 'draft',
         max_grade SMALLINT,
 
@@ -73,7 +73,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         content TEXT NOT NULL,
         student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         assignment_id UUID NOT NULL REFERENCES assignments(id) ON DELETE CASCADE,
-        submitted_at DATE NOT NULL DEFAULT CURRENT_DATE,
+        submitted_at TIMESTAMP NOT NULL DEFAULT CURRENT_DATE,
         status submission_status NOT NULL DEFAULT 'pending',
         feedback TEXT,
         grade SMALLINT,
@@ -89,7 +89,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         room_id UUID REFERENCES rooms(id) ON DELETE CASCADE,
         content_sentence TEXT NOT NULL,
         created_by UUID NOT NULL REFERENCES users(id) ON DELETE SET NULL,
-        created_at DATE NOT NULL DEFAULT CURRENT_DATE
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_DATE
       );
 
       CREATE TABLE IF NOT EXISTS "refresh_tokens" (
