@@ -1,5 +1,10 @@
 import type { Request, Response } from 'express';
-import type { RegisterInput, RegisterResponseDTO } from '@repo/shared';
+import type {
+  LoginInput,
+  LoginResponseDTO,
+  RegisterInput,
+  RegisterResponseDTO,
+} from '@repo/shared';
 import * as authService from './auth.service.js';
 
 export async function register(
@@ -17,4 +22,11 @@ export async function register(
   });
 }
 
-export async function login(req: Request, res: Response) {}
+export async function login(
+  req: Request<unknown, unknown, LoginInput>,
+  res: Response<LoginResponseDTO>,
+) {
+  const accessToken = await authService.login(req.body);
+
+  res.json({ accessToken: accessToken });
+}

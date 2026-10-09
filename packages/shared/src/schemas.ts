@@ -52,3 +52,8 @@ export const registerSchema = z
       });
     }
   });
+
+export const loginSchema = z.object({
+  email: registerSchema.shape.email,
+  password: registerSchema.shape.password,
+});

@@ -34,6 +34,14 @@ class User {
       throw err;
     }
   }
+
+  async findUserByEmail(email: string) {
+    const user = await pg.query<UserRow>(`SELECT * FROM users WHERE email = $1`, [email]);
+
+    if (!user.rows[0]) return null;
+
+    return toUserDomain(user.rows[0]);
+  }
 }
 
 export const UserRepo = new User();

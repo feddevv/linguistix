@@ -1,5 +1,5 @@
 import z from 'zod';
-import { registerSchema } from './schemas.js';
+import { loginSchema, registerSchema } from './schemas.js';
 
 export type Role = 'student' | 'teacher';
 
@@ -10,4 +10,9 @@ export interface RegisterResponseDTO {
   lastName: string;
   email: string;
   role: Role;
+}
+
+export type LoginInput = z.infer<typeof loginSchema>;
+export interface LoginResponseDTO {
+  accessToken: string;
 }
