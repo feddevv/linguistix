@@ -26,7 +26,13 @@ export async function login(
   req: Request<unknown, unknown, LoginInput>,
   res: Response<LoginResponseDTO>,
 ) {
-  const accessToken = await authService.login(req.body);
+  const user = await authService.login(req.body);
 
-  res.json({ accessToken: accessToken });
+  res.json({
+    id: user.id,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    email: user.email,
+    role: user.role,
+  });
 }

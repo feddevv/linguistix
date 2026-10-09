@@ -14,5 +14,9 @@ export interface RegisterResponseDTO {
 
 export type LoginInput = z.infer<typeof loginSchema>;
 export interface LoginResponseDTO {
-  accessToken: string;
+  id: number;
+  firstName: string;
+  lastName: string;
+  email: string;
+  role: Role;
 }

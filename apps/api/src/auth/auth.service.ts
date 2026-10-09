@@ -32,5 +32,5 @@ export async function login({ email, password }: LoginInput) {
     process.env.SECRET_KEY!,
   );
 
-  return accessToken;
+  return user;
 }
