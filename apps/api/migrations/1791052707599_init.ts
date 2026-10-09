@@ -91,6 +91,13 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         created_by UUID NOT NULL REFERENCES users(id) ON DELETE SET NULL,
         created_at DATE NOT NULL DEFAULT CURRENT_DATE
       );
+
+      CREATE TABLE IF NOT EXISTS "refresh_tokens" (
+        id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        refresh_token_hash TEXT NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE
+      );
     `,
   );
 }
@@ -104,6 +111,7 @@ export async function down(pgm: MigrationBuilder): Promise<void> {
       DROP TABLE IF EXISTS assignments;
       DROP TABLE IF EXISTS "words";
       DROP TABLE IF EXISTS rooms;
+      DROP TABLE IF EXISTS refresh_tokens;
       DROP TABLE IF EXISTS users;
 
       DROP TYPE IF EXISTS user_role;
