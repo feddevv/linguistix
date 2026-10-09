@@ -6,3 +6,4 @@ import { registerSchema } from '@repo/shared';
 export const router: Router = Router();
 
 router.post('/auth/register', validate({ body: registerSchema }), authController.register);
+router.post('/auth/login', authController.login);

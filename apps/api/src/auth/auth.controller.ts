@@ -16,3 +16,5 @@ export async function register(
     role: user.role,
   });
 }
+
+export async function login(req: Request, res: Response) {}
