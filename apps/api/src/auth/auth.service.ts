@@ -30,7 +30,22 @@ export async function login({ email, password }: LoginInput) {
   const accessToken = jwt.sign(
     { id: user.id, email: user.email, role: user.role },
     process.env.SECRET_KEY!,
+    {
+      expiresIn: '15m',
+    },
   );
 
-  return user;
+  const refreshToken = jwt.sign(
+    { id: user.id, email: user.email, role: user.role },
+    process.env.SECRET_KEY!,
+    {
+      expiresIn: '15d',
+    },
+  );
+
+  return {
+    user,
+    accessToken,
+    refreshToken,
+  };
 }

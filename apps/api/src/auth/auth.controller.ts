@@ -26,13 +26,27 @@ export async function login(
   req: Request<unknown, unknown, LoginInput>,
   res: Response<LoginResponseDTO>,
 ) {
-  const user = await authService.login(req.body);
+  const data = await authService.login(req.body);
+
+  res.cookie('accessToken', data.accessToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 15 * 60 * 1000,
+  });
+
+  res.cookie('refreshToken', data.refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 15 * 24 * 60 * 60 * 1000,
+  });
 
   res.json({
-    id: user.id,
-    firstName: user.firstName,
-    lastName: user.lastName,
-    email: user.email,
-    role: user.role,
+    id: data.user.id,
+    firstName: data.user.firstName,
+    lastName: data.user.lastName,
+    email: data.user.email,
+    role: data.user.role,
   });
 }

@@ -5,11 +5,13 @@ import swaggerUi from 'swagger-ui-express';
 import fs from 'node:fs';
 import YAML from 'yaml';
 import path from 'node:path';
+import cookieParser from 'cookie-parser';
 
 export const app: Express = express();
 
 // Middlewares
 app.use(json());
+app.use(cookieParser());
 
 // Swagger UI
 if (process.env.NODE_ENV === 'dev') {
