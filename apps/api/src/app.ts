@@ -12,10 +12,12 @@ export const app: Express = express();
 app.use(json());
 
 // Swagger UI
-const filePath = path.resolve(process.cwd(), 'docs/api/openapi.yaml');
-const spec = fs.readFileSync(filePath, 'utf-8');
-const parsedSpec = YAML.parse(spec);
-app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(parsedSpec));
+if (process.env.NODE_ENV === 'dev') {
+  const filePath = path.resolve(process.cwd(), 'docs/api/openapi.yaml');
+  const spec = fs.readFileSync(filePath, 'utf-8');
+  const parsedSpec = YAML.parse(spec);
+  app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(parsedSpec));
+}
 
 // Routers
 app.use('/api', authRouter);
