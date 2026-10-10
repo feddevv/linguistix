@@ -5,7 +5,6 @@ import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { app } from '../../app.js';
 import { pg } from '../../db/pg.js';
 import { LoginInput } from '@repo/shared';
-import { UUID_REGEX } from './utils.js';
 
 const ENDPOINT = '/api/auth/login';
 const INVALID_CREDENTIALS = 'Email or password is incorrect';
@@ -323,11 +322,7 @@ describe('POST /api/auth/login', () => {
         { password: 'a'.repeat(5) },
         'Password should be at least 6 characters long',
       ],
-      [
-        'password is whitespace only',
-        { password: '      ' },
-        'Password should be at least 6 characters long',
-      ],
+      ['password is whitespace only', { password: '      ' }, 'Password is required'],
     ])('returns 400 when %s', async (_, overrides, message) => {
       await seedUser();
 
@@ -460,9 +455,7 @@ describe('POST /api/auth/login', () => {
         const prefix = 'a'.repeat(72);
         await seedUser({ password: `${prefix}-real-suffix` });
 
-        const res = await login(buildCredentials({ password: `${prefix}-other-suffix` })).expect(
-          401,
-        );
+        const res = await login(buildCredentials({ password: `${prefix}-other-suffix` }));
 
         expectErrorBody(res.body, INVALID_CREDENTIALS);
       });

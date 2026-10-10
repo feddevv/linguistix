@@ -24,10 +24,17 @@ export const registerSchema = z
       .max(255, 'Email should not exceed 255 characters'),
     password: z
       .string({
-        error: (iss) => (!iss.input ? 'Password is required' : 'Password should be a string'),
+        error: (iss) => {
+          return !iss.input ? 'Password is required' : 'Password should be a string';
+        },
       })
       .trim()
-      .min(6, 'Password should be at least 6 characters long')
+      .min(6, {
+        error: (iss) =>
+          iss.input?.length === 0
+            ? 'Password is required'
+            : 'Password should be at least 6 characters long',
+      })
       .max(255, 'Password should not exceed 255 characters'),
     confirmPassword: z
       .string({
