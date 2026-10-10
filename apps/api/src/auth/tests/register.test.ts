@@ -4,6 +4,7 @@ import { compare } from 'bcrypt';
 import type { RegisterInput } from '@repo/shared';
 import { app } from '../../app.js';
 import { pg } from '../../db/pg.js';
+import { UserRepo } from '../auth.repository.js';
 
 const ENDPOINT = '/api/auth/register';
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -29,11 +30,6 @@ function register(body: unknown) {
 async function countUsers() {
   const { rows } = await pg.query<{ count: string }>('SELECT COUNT(*) FROM users;');
   return Number(rows[0]!.count);
-}
-
-async function findUserByEmail(email: string) {
-  const { rows } = await pg.query('SELECT * FROM users WHERE email = $1;', [email]);
-  return rows[0];
 }
 
 // Builds a syntactically valid email of exactly `length` characters.
@@ -86,15 +82,15 @@ describe('POST /api/auth/register', () => {
       const user = buildUser();
 
       const res = await register(user).expect(201);
-      const row = await findUserByEmail(user.email as string);
+      const row = await UserRepo.findUserByEmail(user.email as string);
 
       expect(row).toBeDefined();
-      expect(row.id).toBe(res.body.user.id);
-      expect(row.first_name).toBe(user.firstName);
-      expect(row.last_name).toBe(user.lastName);
-      expect(row.role).toBe(user.role);
-      expect(row.password).not.toBe(user.password);
-      expect(await compare(user.password as string, row.password)).toBe(true);
+      expect(row!.id).toBe(res.body.user.id);
+      expect(row!.firstName).toBe(user.firstName);
+      expect(row!.lastName).toBe(user.lastName);
+      expect(row!.role).toBe(user.role);
+      expect(row!.password).not.toBe(user.password);
+      expect(await compare(user.password as string, row!.password)).toBe(true);
     });
   });
 
@@ -218,8 +214,8 @@ describe('POST /api/auth/register', () => {
 
         await register(buildUser({ password, confirmPassword: password })).expect(201);
 
-        const row = await findUserByEmail('ada.lovelace@example.com');
-        expect(await compare(password, row.password)).toBe(true);
+        const row = await UserRepo.findUserByEmail('ada.lovelace@example.com');
+        expect(await compare(password, row!.password)).toBe(true);
       });
 
       it('rejects a password of 5 characters', async () => {
