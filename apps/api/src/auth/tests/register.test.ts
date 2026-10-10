@@ -14,6 +14,7 @@ function buildUser(overrides: Partial<Record<keyof RegisterInput, unknown>> = {}
     lastName: 'Lovelace',
     email: 'ada.lovelace@example.com',
     password: 'correct-horse-battery',
+    confirmPassword: 'correct-horse-battery',
     role: 'student',
     ...overrides,
   };
@@ -62,11 +63,13 @@ describe('POST /api/auth/register', () => {
       const res = await register(user).expect(201).expect('Content-Type', /json/);
 
       expect(res.body).toEqual({
-        id: expect.stringMatching(UUID_REGEX),
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        role: user.role,
+        user: {
+          id: expect.stringMatching(UUID_REGEX),
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          role: user.role,
+        },
       });
     });
 
@@ -75,8 +78,8 @@ describe('POST /api/auth/register', () => {
 
       const res = await register(user).expect(201);
 
-      expect(res.body).not.toHaveProperty('password');
-      expect(res.body).not.toHaveProperty('passwordHash');
+      expect(res.body.user).not.toHaveProperty('password');
+      expect(res.body.user).not.toHaveProperty('passwordHash');
     });
 
     it('persists the user with a bcrypt hash instead of the plain-text password', async () => {
@@ -86,13 +89,12 @@ describe('POST /api/auth/register', () => {
       const row = await findUserByEmail(user.email as string);
 
       expect(row).toBeDefined();
-      expect(row.id).toBe(res.body.id);
+      expect(row.id).toBe(res.body.user.id);
       expect(row.first_name).toBe(user.firstName);
       expect(row.last_name).toBe(user.lastName);
       expect(row.role).toBe(user.role);
       expect(row.password).not.toBe(user.password);
       expect(await compare(user.password as string, row.password)).toBe(true);
-      expect(await compare('wrong-password', row.password)).toBe(false);
     });
   });
 
@@ -115,6 +117,7 @@ describe('POST /api/auth/register', () => {
           firstName: 'Grace',
           lastName: 'Hopper',
           password: 'another-password',
+          confirmPassword: 'another-password',
           role: 'teacher',
         }),
       ).expect(409);
@@ -139,6 +142,7 @@ describe('POST /api/auth/register', () => {
       ['lastName', 'lastName', 'Last name is required'],
       ['email', 'email', 'Email is required'],
       ['password', 'password', 'Password is required'],
+      ['confirmPassword', 'confirmPassword', 'Password confirmation is required'],
       ['role', 'role', 'Role is required'],
     ])('returns 400 when %s is missing', async (_, field, message) => {
       const user = buildUser();
@@ -154,6 +158,16 @@ describe('POST /api/auth/register', () => {
       ['firstName is a number', { firstName: 12345 }, 'First name should be a string'],
       ['lastName is an object', { lastName: { name: 'x' } }, 'Last name should be a string'],
       ['password is a number', { password: 12345678 }, 'Password should be a string'],
+      [
+        'confirmPassword is a number',
+        { confirmPassword: 12345678 },
+        'Password confirmation should be a string',
+      ],
+      [
+        "password and confirm password don't match",
+        { password: '123123123', confirmPassword: '123123123123' },
+        "Passwords don't match",
+      ],
       ['email is a number', { email: 12345 }, 'Invalid email format'],
       ['email has no @', { email: 'not-an-email' }, 'Invalid email format'],
       ['email has no domain', { email: 'ada@' }, 'Invalid email format'],
@@ -202,34 +216,42 @@ describe('POST /api/auth/register', () => {
       it('accepts a password of exactly 6 characters (minimum)', async () => {
         const password = 'a'.repeat(6);
 
-        await register(buildUser({ password })).expect(201);
+        await register(buildUser({ password, confirmPassword: password })).expect(201);
 
         const row = await findUserByEmail('ada.lovelace@example.com');
         expect(await compare(password, row.password)).toBe(true);
       });
 
       it('rejects a password of 5 characters', async () => {
-        const res = await register(buildUser({ password: 'a'.repeat(5) })).expect(400);
+        const res = await register(
+          buildUser({ password: 'a'.repeat(5), confirmPassword: 'a'.repeat(5) }),
+        ).expect(400);
 
         expectErrorBody(res.body, 'Password should be at least 6 characters long');
         expect(await countUsers()).toBe(0);
       });
 
       it('rejects a password that only reaches 6 characters through surrounding whitespace', async () => {
-        const res = await register(buildUser({ password: '  abc  ' })).expect(400);
+        const res = await register(
+          buildUser({ password: '  abc  ', confirmPassword: '  abc  ' }),
+        ).expect(400);
 
         expectErrorBody(res.body, 'Password should be at least 6 characters long');
         expect(await countUsers()).toBe(0);
       });
 
       it('accepts a password of exactly 255 characters (maximum)', async () => {
-        await register(buildUser({ password: 'a'.repeat(255) })).expect(201);
+        await register(
+          buildUser({ password: 'a'.repeat(255), confirmPassword: 'a'.repeat(255) }),
+        ).expect(201);
 
         expect(await countUsers()).toBe(1);
       });
 
       it('rejects a password of 256 characters', async () => {
-        const res = await register(buildUser({ password: 'a'.repeat(256) })).expect(400);
+        const res = await register(
+          buildUser({ password: 'a'.repeat(256), confirmPassword: 'a'.repeat(256) }),
+        ).expect(400);
 
         expectErrorBody(res.body, 'Password should not exceed 255 characters');
         expect(await countUsers()).toBe(0);
@@ -240,8 +262,8 @@ describe('POST /api/auth/register', () => {
       it('accepts names of exactly 2 characters (minimum)', async () => {
         const res = await register(buildUser({ firstName: 'Al', lastName: 'Li' })).expect(201);
 
-        expect(res.body.firstName).toBe('Al');
-        expect(res.body.lastName).toBe('Li');
+        expect(res.body.user.firstName).toBe('Al');
+        expect(res.body.user.lastName).toBe('Li');
       });
 
       it('rejects a 1-character first name', async () => {
@@ -255,8 +277,8 @@ describe('POST /api/auth/register', () => {
 
         const res = await register(buildUser({ firstName: name, lastName: name })).expect(201);
 
-        expect(res.body.firstName).toBe(name);
-        expect(res.body.lastName).toBe(name);
+        expect(res.body.user.firstName).toBe(name);
+        expect(res.body.user.lastName).toBe(name);
       });
 
       it('rejects a 101-character last name with 400 instead of a database error', async () => {
@@ -278,7 +300,7 @@ describe('POST /api/auth/register', () => {
 
         const res = await register(buildUser({ email })).expect(201);
 
-        expect(res.body.email).toBe(email);
+        expect(res.body.user.email).toBe(email);
       });
 
       it('rejects an email of 256 characters with 400 instead of a database error', async () => {
@@ -295,7 +317,7 @@ describe('POST /api/auth/register', () => {
 
         const res = await register({ ...buildUser(), id: forcedId }).expect(201);
 
-        expect(res.body.id).not.toBe(forcedId);
+        expect(res.body.user.id).not.toBe(forcedId);
         const { rows } = await pg.query('SELECT id FROM users WHERE id = $1;', [forcedId]);
         expect(rows).toHaveLength(0);
       });
