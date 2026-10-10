@@ -5,9 +5,9 @@ import type { RegisterInput } from '@repo/shared';
 import { app } from '../../app.js';
 import { pg } from '../../db/pg.js';
 import { UserRepo } from '../auth.repository.js';
+import { UUID_REGEX } from './utils.js';
 
 const ENDPOINT = '/api/auth/register';
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function buildUser(overrides: Partial<Record<keyof RegisterInput, unknown>> = {}) {
   return {
