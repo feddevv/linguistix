@@ -21,11 +21,11 @@ export async function register({ firstName, lastName, password, email, role }: R
 export async function login({ email, password }: LoginInput) {
   const user = await UserRepo.findUserByEmail(email);
 
-  if (!user) throw new HttpError(404, 'Email or password is incorrect');
+  if (!user) throw new HttpError(401, 'Email or password is incorrect');
 
   const isMatch = await compare(password, user.password);
 
-  if (!isMatch) throw new HttpError(404, 'Email or password is incorrect');
+  if (!isMatch) throw new HttpError(401, 'Email or password is incorrect');
 
   const accessToken = jwt.sign(
     { id: user.id, email: user.email, role: user.role },
