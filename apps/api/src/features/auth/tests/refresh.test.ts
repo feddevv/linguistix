@@ -31,7 +31,7 @@ function refresh(refreshToken?: string) {
 }
 
 function signToken(
-  payload: object,
+  payload: jwt.JwtPayload,
   options: jwt.SignOptions = {},
   secret = process.env.SECRET_KEY!,
 ) {
