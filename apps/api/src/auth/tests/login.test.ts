@@ -6,6 +6,7 @@ import { app } from '../../app.js';
 import { pg } from '../../db/pg.js';
 import { LoginInput } from '@repo/shared';
 import { createHash } from 'node:crypto';
+import { preparePassword } from '../auth.utils.js';
 
 const ENDPOINT = '/api/auth/login';
 const INVALID_CREDENTIALS = 'Email or password is incorrect';
@@ -23,7 +24,7 @@ const existingUser = {
 
 async function seedUser(overrides: Partial<typeof existingUser> = {}) {
   const user = { ...existingUser, ...overrides };
-  const sha256hash = createHash('sha256').update(user.password).digest('hex');
+  const sha256hash = preparePassword(user.password);
   const passwordHash = await hash(sha256hash, 10);
 
   const { rows } = await pg.query<{ id: string }>(

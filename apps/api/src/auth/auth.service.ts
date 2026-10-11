@@ -4,9 +4,10 @@ import { compare, hash } from 'bcrypt';
 import { HttpError } from '../errors/HttpError.js';
 import jwt from 'jsonwebtoken';
 import { createHash } from 'node:crypto';
+import { preparePassword } from './auth.utils.js';
 
 export async function register({ firstName, lastName, password, email, role }: RegisterInput) {
-  const sha256hash = createHash('sha256').update(password).digest('hex');
+  const sha256hash = preparePassword(password);
   const passwordHash = await hash(sha256hash, 10);
 
   const user = await UserRepo.createUser({
@@ -25,7 +26,7 @@ export async function login({ email, password }: LoginInput) {
 
   if (!user) throw new HttpError(401, 'Email or password is incorrect');
 
-  const sha256hash = createHash('sha256').update(password).digest('hex');
+  const sha256hash = preparePassword(password);
   const isMatch = await compare(sha256hash, user.password);
 
   if (!isMatch) throw new HttpError(401, 'Email or password is incorrect');

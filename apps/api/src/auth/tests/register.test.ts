@@ -7,6 +7,7 @@ import { pg } from '../../db/pg.js';
 import { UserRepo } from '../auth.repository.js';
 import { UUID_REGEX } from './utils.js';
 import { createHash } from 'node:crypto';
+import { preparePassword } from '../auth.utils.js';
 
 const ENDPOINT = '/api/auth/register';
 
@@ -92,9 +93,7 @@ describe('POST /api/auth/register', () => {
       expect(row!.role).toBe(user.role);
       expect(row!.password).not.toBe(user.password);
 
-      const sha256hash = createHash('sha256')
-        .update(user.password as string)
-        .digest('hex');
+      const sha256hash = preparePassword(user.password as string);
       expect(await compare(sha256hash, row!.password)).toBe(true);
     });
   });
@@ -220,7 +219,7 @@ describe('POST /api/auth/register', () => {
         await register(buildUser({ password, confirmPassword: password })).expect(201);
 
         const row = await UserRepo.findUserByEmail('ada.lovelace@example.com');
-        const sha256hash = createHash('sha256').update(password).digest('hex');
+        const sha256hash = preparePassword(password);
         expect(await compare(sha256hash, row!.password)).toBe(true);
       });
 

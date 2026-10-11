@@ -8,7 +8,7 @@
     "build": "pnpm --filter @repo/shared build && tsc",
     "start": "node ./dist/server.js",
     "dev": "nodemon --exec tsx --env-file=../../.env src/server.ts",
-    "test": "pnpm run migrate:test up && dotenv -e ../../.env.test -- vitest",
+    "test": "pnpm run migrate:test up && dotenv -e ../../.env.test -- vitest --no-file-parallelism",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
   },
