@@ -17,6 +17,16 @@ info:
     `refreshToken`, that hold signed JWTs. Browsers send them automatically on
     later requests.
 
+    - `accessToken` lives 15 minutes, `refreshToken` lives 15 days.
+    - Both JWTs carry the same claims: `id`, `email`, `role`, a random `jti`,
+      `iat` and `exp`.
+    - Every login starts a new session: a SHA-256 hash of its refresh token is
+      stored on the server. A user can have several sessions at once (for
+      example, on different devices).
+    - When the access token expires, call `POST /api/auth/refresh` to get a new
+      pair of tokens. Refresh tokens are **rotated**: each one can be used only
+      once.
+
 servers:
   - url: http://localhost:3000
     description: Local development server
@@ -45,7 +55,8 @@ paths:
         - `email` is **not** trimmed. It is lower-cased before it is stored, so it is
           unique regardless of letter case (`Ada@Example.com` and `ada@example.com` are
           treated as the same address).
-        - The password is stored as a bcrypt hash and is never returned.
+        - The password is hashed with SHA-256 and then with bcrypt, so passwords
+          longer than 72 bytes are not truncated. It is never returned.
         - Unknown properties (for example `id`) are silently ignored.
         - The user is **not** logged in; no cookies are set. Call `POST /api/auth/login`
           afterwards.
@@ -82,6 +93,8 @@ paths:
           and `Path=/`, plus `Secure` when the server runs in production:
           - `accessToken`: JWT valid for 15 minutes (`Max-Age=900`).
           - `refreshToken`: JWT valid for 15 days (`Max-Age=1296000`).
+        - Each successful login starts a new session; sessions started earlier stay
+          valid.
         - Unknown properties are silently ignored.
       requestBody:
         $ref: '#/components/requestBodies/LoginRequest'
@@ -90,7 +103,7 @@ paths:
           $ref: '#/components/responses/LoginSuccess'
         '400':
           $ref: '#/components/responses/LoginBadRequest'
-        '404':
+        '401':
           $ref: '#/components/responses/InvalidCredentials'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
@@ -99,7 +112,59 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /api/auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refresh
+      security:
+        - refreshTokenCookie: []
+      summary: Refresh the session tokens
+      description: |
+        Exchanges a valid refresh token for a new access token and a new refresh
+        token.
+
+        - The refresh token is read **only** from the `refreshToken` cookie. A token
+          sent in the request body or in the `Authorization` header is ignored.
+        - No request body is needed, and any body is ignored. A body that is sent
+          as JSON is still parsed, so it must be valid JSON, UTF-8 encoded and at
+          most 100 KB (see the `400`, `413` and `415` responses).
+        - The refresh token is accepted only if its JWT signature and expiry are
+          valid **and** its session is stored on the server and has not expired.
+          An access token cannot be used as a refresh token.
+        - The new tokens are built from the current user record, so changes to the
+          user (for example, the role) are applied.
+        - The refresh token is **rotated**: the presented token is replaced by the
+          new one and cannot be used again. If the same token is sent in two
+          concurrent requests, only one of them succeeds. Other sessions of the
+          user are not affected.
+        - On success, the response sets the same two cookies as
+          `POST /api/auth/login`.
+        - On `401` or `500`, both `accessToken` and `refreshToken` cookies are
+          cleared.
+      responses:
+        '200':
+          $ref: '#/components/responses/RefreshSuccess'
+        '400':
+          $ref: '#/components/responses/RefreshBadRequest'
+        '401':
+          $ref: '#/components/responses/RefreshUnauthorized'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/RefreshInternalServerError'
+
 components:
+  securitySchemes:
+    refreshTokenCookie:
+      type: apiKey
+      in: cookie
+      name: refreshToken
+      description: |
+        Refresh token JWT set by `POST /api/auth/login` or `POST /api/auth/refresh`.
+        The cookie is `HttpOnly`, so browsers send it automatically.
+
   schemas:
     Role:
       type: string
@@ -146,7 +211,8 @@ components:
       format: password
       description: |
         Plain-text password. Leading and trailing whitespace is trimmed before
-        validation; the trimmed value must be 6–255 characters long.
+        validation; the trimmed value must be 6–255 characters long. An empty or
+        whitespace-only value is reported as missing.
       minLength: 6
       maxLength: 255
       writeOnly: true
@@ -223,6 +289,16 @@ components:
 
     LoginResponse:
       $ref: '#/components/schemas/UserResponse'
+
+    RefreshResponse:
+      type: object
+      description: Confirms that the session tokens were refreshed.
+      required: [message]
+      additionalProperties: false
+      properties:
+        message:
+          type: string
+          example: Refreshed
 
     Error:
       type: object
@@ -324,6 +400,26 @@ components:
               email: ada.lovelace@example.com
               role: student
 
+    RefreshSuccess:
+      description: |
+        Tokens refreshed. New session cookies are set and the presented refresh
+        token is no longer valid. The tokens are never returned in the body.
+      headers:
+        Set-Cookie:
+          description: |
+            Two cookies are set, one per `Set-Cookie` header:
+            `accessToken` (15 minutes) and `refreshToken` (15 days). Both are
+            `HttpOnly; SameSite=Lax; Path=/`, and `Secure` in production.
+          schema:
+            type: string
+          example: refreshToken=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...; Max-Age=1296000; Path=/; HttpOnly; SameSite=Lax
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RefreshResponse'
+          example:
+            message: Refreshed
+
     BadRequest:
       description: |
         The request body is missing, is not valid JSON, is not a JSON object, or
@@ -390,7 +486,7 @@ components:
               value:
                 message: Email should not exceed 255 characters
             passwordRequired:
-              summary: password is missing, null or another falsy value (for example `0`)
+              summary: password is missing, null, another falsy value (for example `0`), or empty after trimming
               value:
                 message: Password is required
             passwordNotString:
@@ -460,7 +556,7 @@ components:
               value:
                 message: Email should not exceed 255 characters
             passwordRequired:
-              summary: password is missing, null or another falsy value (for example `0`)
+              summary: password is missing, null, another falsy value (for example `0`), or empty after trimming
               value:
                 message: Password is required
             passwordNotString:
@@ -475,6 +571,50 @@ components:
               summary: password is longer than 255 characters after trimming
               value:
                 message: Password should not exceed 255 characters
+
+    RefreshBadRequest:
+      description: |
+        The request has a JSON `Content-Type` but its body is not valid JSON. The
+        session cookies are not changed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            message: Unexpected end of JSON input
+
+    RefreshUnauthorized:
+      description: |
+        The refresh token is missing or cannot be used. Both session cookies are
+        cleared.
+      headers:
+        Set-Cookie:
+          description: |
+            Two cookies are cleared, one per `Set-Cookie` header: `accessToken`
+            and `refreshToken`, each with an empty value and an expiry date in
+            the past.
+          schema:
+            type: string
+          example: refreshToken=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            notAttached:
+              summary: The refreshToken cookie is missing or empty
+              value:
+                message: Refresh token is not attached
+            invalidOrExpired:
+              summary: |
+                The token is malformed, has a bad signature or has expired; its session
+                is not stored, has expired or was revoked; or it was already rotated
+              value:
+                message: Invalid or expired token
+            userNotFound:
+              summary: The user of the session no longer exists
+              value:
+                message: Current user doesn't exist
 
     EmailConflict:
       description: A user with this email (case-insensitive) already exists.
@@ -525,6 +665,26 @@ components:
       description: |
         Unexpected server error, such as the database being unavailable or the
         token signing key not being configured.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            message: Internal server error!
+
+    RefreshInternalServerError:
+      description: |
+        Unexpected server error, such as the database being unavailable. Both
+        session cookies are cleared.
+      headers:
+        Set-Cookie:
+          description: |
+            Two cookies are cleared, one per `Set-Cookie` header: `accessToken`
+            and `refreshToken`, each with an empty value and an expiry date in
+            the past.
+          schema:
+            type: string
+          example: accessToken=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax
       content:
         application/json:
           schema:
