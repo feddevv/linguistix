@@ -4,7 +4,7 @@ import { compare, hash } from 'bcrypt';
 import { HttpError } from '../errors/HttpError.js';
 import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { createHash } from 'node:crypto';
-import { preparePassword } from './utils/auth.utils.js';
+import { preparePassword } from './utils/hashing.js';
 import { pg } from '../db/pg.js';
 
 export async function register({ firstName, lastName, password, email, role }: RegisterInput) {

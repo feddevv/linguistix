@@ -6,7 +6,7 @@ import type {
   RegisterResponseDTO,
 } from '@repo/shared';
 import * as authService from './auth.service.js';
-import { setJWTCookie } from './utils/auth.utils.js';
+import { setJWTCookie } from './utils/cookies.js';
 
 export async function register(
   req: Request<unknown, unknown, RegisterInput>,
