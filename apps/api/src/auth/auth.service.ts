@@ -2,10 +2,8 @@ import { RefreshTokenRepo, UserRepo } from './auth.repository.js';
 import type { LoginInput, RegisterInput } from '@repo/shared';
 import { compare, hash } from 'bcrypt';
 import { HttpError } from '../errors/HttpError.js';
-import jwt, { type JwtPayload } from 'jsonwebtoken';
-import { createHash } from 'node:crypto';
+import jwt from 'jsonwebtoken';
 import { hashString } from './utils/hashing.js';
-import { pg } from '../db/pg.js';
 
 export async function register({ firstName, lastName, password, email, role }: RegisterInput) {
   const sha256hash = hashString(password);
@@ -50,10 +48,13 @@ export async function login({ email, password }: LoginInput) {
 
   const date = new Date();
   date.setDate(date.getDate() + 15);
-  await pg.query(
-    `INSERT INTO refresh_tokens (refresh_token_hash, user_id, expires_at) VALUES ($1, $2, $3)`,
-    [createHash('sha256').update(refreshToken).digest('hex'), user.id, date],
-  );
+
+  const hashedRefreshToken = hashString(refreshToken);
+  await RefreshTokenRepo.createRefreshToken({
+    refreshTokenHash: hashedRefreshToken,
+    userId: user.id,
+    expiresAt: date,
+  });
 
   return {
     user,

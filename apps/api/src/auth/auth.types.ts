@@ -1,7 +1,7 @@
 import type { Role } from '@repo/shared';
 
 export interface UserRow {
-  id: number;
+  id: string;
   first_name: string;
   last_name: string;
   email: string;
@@ -11,7 +11,7 @@ export interface UserRow {
 }
 
 export interface UserDomain {
-  id: number;
+  id: string;
   firstName: string;
   lastName: string;
   email: string;
@@ -33,3 +33,8 @@ export interface RefreshTokenDomain {
   userId: string;
   expiresAt: Date;
 }
+
+export type RefreshTokenInputDto = Pick<
+  RefreshTokenDomain,
+  'refreshTokenHash' | 'userId' | 'expiresAt'
+>;

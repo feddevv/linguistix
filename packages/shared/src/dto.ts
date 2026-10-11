@@ -6,7 +6,7 @@ export type Role = 'student' | 'teacher';
 export type RegisterInput = z.infer<typeof registerSchema>;
 export interface RegisterResponseDTO {
   user: {
-    id: number;
+    id: string;
     firstName: string;
     lastName: string;
     email: string;
@@ -17,7 +17,7 @@ export interface RegisterResponseDTO {
 export type LoginInput = z.infer<typeof loginSchema>;
 export interface LoginResponseDTO {
   user: {
-    id: number;
+    id: string;
     firstName: string;
     lastName: string;
     email: string;

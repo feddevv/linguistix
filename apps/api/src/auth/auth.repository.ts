@@ -1,7 +1,7 @@
 import { DatabaseError } from 'pg';
 import { pg } from '../db/pg.js';
 import { toRefreshTokenDomain, toUserDomain } from '../utils/mappers.js';
-import type { RefreshTokenRow, UserRow } from './auth.types.js';
+import type { RefreshTokenInputDto, RefreshTokenRow, UserRow } from './auth.types.js';
 import { HttpError } from '../errors/HttpError.js';
 import type { RegisterInput } from '@repo/shared';
 
@@ -73,6 +73,15 @@ class RefreshToken {
     );
 
     return updated.rowCount;
+  }
+
+  async createRefreshToken({ refreshTokenHash, userId, expiresAt }: RefreshTokenInputDto) {
+    const refreshToken = await pg.query<RefreshTokenRow>(
+      `INSERT INTO refresh_tokens (refresh_token_hash, user_id, expires_at) VALUES ($1, $2, $3) RETURNING *`,
+      [refreshTokenHash, userId, expiresAt],
+    );
+
+    return toRefreshTokenDomain(refreshToken.rows[0]!);
   }
 }
 
