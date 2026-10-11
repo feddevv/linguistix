@@ -8,3 +8,11 @@ export function setJWTCookie(res: Response, name: string, value: unknown, maxAge
     maxAge,
   });
 }
+
+export function deleteJWTCookie(res: Response, name: string) {
+  res.clearCookie(name, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+  });
+}

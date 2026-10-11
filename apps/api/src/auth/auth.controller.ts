@@ -6,7 +6,7 @@ import type {
   RegisterResponseDTO,
 } from '@repo/shared';
 import * as authService from './auth.service.js';
-import { setJWTCookie } from './utils/cookies.js';
+import { deleteJWTCookie, setJWTCookie } from './utils/cookies.js';
 
 const ACCESS_TOKEN_EXPIRES_AT = 15 * 60 * 1000;
 const REFRESH_TOKEN_EXPIRES_AT = 15 * 24 * 60 * 60 * 1000;
@@ -52,11 +52,18 @@ export async function login(
 export async function refresh(req: Request, res: Response) {
   const refreshToken = req.cookies.refreshToken as string | undefined;
 
-  const { newAccessToken, newRefreshToken } = await authService.refresh(refreshToken);
+  try {
+    const { newAccessToken, newRefreshToken } = await authService.refresh(refreshToken);
 
-  setJWTCookie(res, 'accessToken', newAccessToken, ACCESS_TOKEN_EXPIRES_AT);
+    setJWTCookie(res, 'accessToken', newAccessToken, ACCESS_TOKEN_EXPIRES_AT);
 
-  setJWTCookie(res, 'refreshToken', newRefreshToken, REFRESH_TOKEN_EXPIRES_AT);
+    setJWTCookie(res, 'refreshToken', newRefreshToken, REFRESH_TOKEN_EXPIRES_AT);
 
-  res.json({ message: 'Refreshed' });
+    res.json({ message: 'Refreshed' });
+  } catch (err) {
+    deleteJWTCookie(res, 'accessToken');
+    deleteJWTCookie(res, 'refreshToken');
+
+    throw err;
+  }
 }
