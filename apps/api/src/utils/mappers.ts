@@ -1,9 +1,5 @@
-import type {
-  UserDomain,
-  UserRow,
-  RefreshTokenRow,
-  RefreshTokenDomain,
-} from '../auth/auth.types.js';
+import type { RefreshTokenRow, RefreshTokenDomain } from '../features/auth/auth.types.js';
+import type { UserDomain, UserRow } from '../features/user/user.types.js';
 
 export function toUserDomain(userRow: UserRow): UserDomain {
   return {

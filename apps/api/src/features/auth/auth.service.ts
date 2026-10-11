@@ -1,9 +1,10 @@
-import { RefreshTokenRepo, UserRepo } from './auth.repository.js';
+import { RefreshTokenRepo } from './auth.repository.js';
 import type { LoginInput, RegisterInput } from '@repo/shared';
 import { compare, hash } from 'bcrypt';
-import { HttpError } from '../errors/HttpError.js';
+import { HttpError } from '../../errors/HttpError.js';
 import jwt from 'jsonwebtoken';
 import { hashString } from './utils/hashing.js';
+import { UserRepo } from '../user/user.repository.js';
 
 export async function register({ firstName, lastName, password, email, role }: RegisterInput) {
   const sha256hash = hashString(password);

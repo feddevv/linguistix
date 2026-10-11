@@ -1,5 +1,5 @@
 import express, { json, type Express } from 'express';
-import { router as authRouter } from './auth/auth.route.js';
+import { router as authRouter } from './features/auth/auth.route.js';
 import { globalErrorHandler } from './middlewares/errors.js';
 import swaggerUi from 'swagger-ui-express';
 import fs from 'node:fs';
