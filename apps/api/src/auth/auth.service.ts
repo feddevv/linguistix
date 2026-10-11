@@ -96,7 +96,7 @@ export async function refresh(refreshToken: string | undefined) {
   const newExpiresAt = new Date();
   newExpiresAt.setDate(newExpiresAt.getDate() + 15);
 
-  await RefreshTokenRepo.updateRefreshTokenByHash(
+  await RefreshTokenRepo.updateRefreshToken(
     hashedRefreshToken,
     hashedNewRefreshToken,
     newExpiresAt,
