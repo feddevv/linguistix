@@ -67,10 +67,12 @@ class RefreshToken {
   }
 
   async updateRefreshToken(oldRefreshTokenHash: string, newRefreshToken: string, expiresAt: Date) {
-    await pg.query(
+    const updated = await pg.query(
       `UPDATE refresh_tokens SET refresh_token_hash = $1, expires_at = $2 WHERE refresh_token_hash = $3;`,
       [newRefreshToken, expiresAt, oldRefreshTokenHash],
     );
+
+    return updated.rowCount;
   }
 }
 
