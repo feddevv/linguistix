@@ -2,12 +2,11 @@ import { describe, it, beforeEach, afterAll, expect } from 'vitest';
 import request from 'supertest';
 import { compare } from 'bcrypt';
 import type { RegisterInput } from '@repo/shared';
-import { app } from '../../app.js';
-import { pg } from '../../db/pg.js';
-import { UserRepo } from '../auth.repository.js';
+import { app } from '../../../app.js';
+import { pg } from '../../../db/pg.js';
+import { UserRepo } from '../../user/user.repository.js';
 import { UUID_REGEX } from './utils.js';
-import { createHash } from 'node:crypto';
-import { preparePassword } from '../auth.utils.js';
+import { hashString } from '../utils/hashing.js';
 
 const ENDPOINT = '/api/auth/register';
 
@@ -93,7 +92,7 @@ describe('POST /api/auth/register', () => {
       expect(row!.role).toBe(user.role);
       expect(row!.password).not.toBe(user.password);
 
-      const sha256hash = preparePassword(user.password as string);
+      const sha256hash = hashString(user.password as string);
       expect(await compare(sha256hash, row!.password)).toBe(true);
     });
   });
@@ -219,7 +218,7 @@ describe('POST /api/auth/register', () => {
         await register(buildUser({ password, confirmPassword: password })).expect(201);
 
         const row = await UserRepo.findUserByEmail('ada.lovelace@example.com');
-        const sha256hash = preparePassword(password);
+        const sha256hash = hashString(password);
         expect(await compare(sha256hash, row!.password)).toBe(true);
       });
 
