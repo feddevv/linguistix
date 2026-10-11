@@ -8,6 +8,9 @@ import type {
 import * as authService from './auth.service.js';
 import { setJWTCookie } from './utils/cookies.js';
 
+const ACCESS_TOKEN_EXPIRES_AT = 15 * 60 * 1000;
+const REFRESH_TOKEN_EXPIRES_AT = 15 * 24 * 60 * 60 * 1000;
+
 export async function register(
   req: Request<unknown, unknown, RegisterInput>,
   res: Response<RegisterResponseDTO>,
@@ -31,9 +34,9 @@ export async function login(
 ) {
   const { accessToken, refreshToken, user } = await authService.login(req.body);
 
-  setJWTCookie(res, 'accessToken', accessToken, 15 * 60 * 1000);
+  setJWTCookie(res, 'accessToken', accessToken, ACCESS_TOKEN_EXPIRES_AT);
 
-  setJWTCookie(res, 'refreshToken', refreshToken, 15 * 24 * 60 * 60 * 1000);
+  setJWTCookie(res, 'refreshToken', refreshToken, REFRESH_TOKEN_EXPIRES_AT);
 
   res.json({
     user: {
@@ -51,9 +54,9 @@ export async function refresh(req: Request, res: Response) {
 
   const { newAccessToken, newRefreshToken } = await authService.refresh(refreshToken);
 
-  setJWTCookie(res, 'accessToken', newAccessToken, 15 * 60 * 1000);
+  setJWTCookie(res, 'accessToken', newAccessToken, ACCESS_TOKEN_EXPIRES_AT);
 
-  setJWTCookie(res, 'refreshToken', newRefreshToken, 15 * 24 * 60 * 60 * 1000);
+  setJWTCookie(res, 'refreshToken', newRefreshToken, REFRESH_TOKEN_EXPIRES_AT);
 
   res.json({ message: 'Refreshed' });
 }
