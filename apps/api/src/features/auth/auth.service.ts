@@ -32,7 +32,7 @@ export async function login({ email, password }: LoginInput) {
   if (!isMatch) throw new HttpError(401, 'Email or password is incorrect');
 
   const accessToken = jwt.sign(
-    { id: user.id, email: user.email, role: user.role },
+    { id: user.id, email: user.email, role: user.role, jti: crypto.randomUUID() },
     process.env.SECRET_KEY!,
     {
       expiresIn: '15m',
@@ -40,7 +40,7 @@ export async function login({ email, password }: LoginInput) {
   );
 
   const refreshToken = jwt.sign(
-    { id: user.id, email: user.email, role: user.role },
+    { id: user.id, email: user.email, role: user.role, jti: crypto.randomUUID() },
     process.env.SECRET_KEY!,
     {
       expiresIn: '15d',
@@ -83,12 +83,12 @@ export async function refresh(refreshToken: string | undefined) {
   if (!user) throw new HttpError(401, "Current user doesn't exist");
 
   const newAccessToken = jwt.sign(
-    { id: user.id, email: user.email, role: user.role },
+    { id: user.id, email: user.email, role: user.role, jti: crypto.randomUUID() },
     process.env.SECRET_KEY!,
     { expiresIn: '15m' },
   );
   const newRefreshToken = jwt.sign(
-    { id: user.id, email: user.email, role: user.role },
+    { id: user.id, email: user.email, role: user.role, jti: crypto.randomUUID() },
     process.env.SECRET_KEY!,
     { expiresIn: '15d' },
   );
