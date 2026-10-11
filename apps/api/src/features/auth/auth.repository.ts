@@ -5,7 +5,7 @@ import type { RefreshTokenInputDto, RefreshTokenRow } from './auth.types.js';
 class RefreshToken {
   async findRefreshTokenByHash(refreshTokenHash: string) {
     const refreshToken = await pg.query<RefreshTokenRow>(
-      `SELECT * FROM refresh_tokens WHERE refresh_token_hash = $1`,
+      `SELECT * FROM refresh_tokens WHERE refresh_token_hash = $1 AND expires_at > NOW()`,
       [refreshTokenHash],
     );
 
