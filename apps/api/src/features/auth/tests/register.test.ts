@@ -28,11 +28,6 @@ function register(body: unknown) {
     .send(body as object);
 }
 
-async function countUsers() {
-  const { rows } = await pg.query<{ count: string }>('SELECT COUNT(*) FROM users;');
-  return Number(rows[0]!.count);
-}
-
 // Builds a syntactically valid email of exactly `length` characters.
 function emailOfLength(length: number) {
   const suffix = '@example.com';
@@ -105,7 +100,7 @@ describe('POST /api/auth/register', () => {
       const res = await register(user).expect(409);
 
       expectErrorBody(res.body, 'User with this email already exists');
-      expect(await countUsers()).toBe(1);
+      expect(await UserRepo.countUsers()).toBe(1);
     });
 
     it('returns 409 even when all other fields differ', async () => {
@@ -122,7 +117,7 @@ describe('POST /api/auth/register', () => {
       ).expect(409);
 
       expectErrorBody(res.body, 'User with this email already exists');
-      expect(await countUsers()).toBe(1);
+      expect(await UserRepo.countUsers()).toBe(1);
     });
 
     it('treats emails as case-insensitive when checking uniqueness', async () => {
@@ -131,7 +126,7 @@ describe('POST /api/auth/register', () => {
       const res = await register(buildUser({ email: 'Ada.Lovelace@Example.COM' })).expect(409);
 
       expectErrorBody(res.body, 'User with this email already exists');
-      expect(await countUsers()).toBe(1);
+      expect(await UserRepo.countUsers()).toBe(1);
     });
   });
 
@@ -150,7 +145,7 @@ describe('POST /api/auth/register', () => {
       const res = await register(user).expect(400).expect('Content-Type', /json/);
 
       expectErrorBody(res.body, message);
-      expect(await countUsers()).toBe(0);
+      expect(await UserRepo.countUsers()).toBe(0);
     });
 
     it.each<[string, Record<string, unknown>, string]>([
@@ -185,28 +180,28 @@ describe('POST /api/auth/register', () => {
       const res = await register(buildUser(overrides)).expect(400);
 
       expectErrorBody(res.body, message);
-      expect(await countUsers()).toBe(0);
+      expect(await UserRepo.countUsers()).toBe(0);
     });
 
     it('returns 400 for null field values', async () => {
       const res = await register(buildUser({ email: null })).expect(400);
 
       expectErrorBody(res.body);
-      expect(await countUsers()).toBe(0);
+      expect(await UserRepo.countUsers()).toBe(0);
     });
 
     it('returns 400 for an empty JSON object', async () => {
       const res = await register({}).expect(400);
 
       expectErrorBody(res.body);
-      expect(await countUsers()).toBe(0);
+      expect(await UserRepo.countUsers()).toBe(0);
     });
 
     it('returns 400 when no body is sent', async () => {
       const res = await request(app).post(ENDPOINT).expect(400);
 
       expectErrorBody(res.body);
-      expect(await countUsers()).toBe(0);
+      expect(await UserRepo.countUsers()).toBe(0);
     });
   });
 
@@ -228,7 +223,7 @@ describe('POST /api/auth/register', () => {
         ).expect(400);
 
         expectErrorBody(res.body, 'Password should be at least 6 characters long');
-        expect(await countUsers()).toBe(0);
+        expect(await UserRepo.countUsers()).toBe(0);
       });
 
       it('rejects a password that only reaches 6 characters through surrounding whitespace', async () => {
@@ -237,7 +232,7 @@ describe('POST /api/auth/register', () => {
         ).expect(400);
 
         expectErrorBody(res.body, 'Password should be at least 6 characters long');
-        expect(await countUsers()).toBe(0);
+        expect(await UserRepo.countUsers()).toBe(0);
       });
 
       it('accepts a password of exactly 255 characters (maximum)', async () => {
@@ -245,7 +240,7 @@ describe('POST /api/auth/register', () => {
           buildUser({ password: 'a'.repeat(255), confirmPassword: 'a'.repeat(255) }),
         ).expect(201);
 
-        expect(await countUsers()).toBe(1);
+        expect(await UserRepo.countUsers()).toBe(1);
       });
 
       it('rejects a password of 256 characters', async () => {
@@ -254,7 +249,7 @@ describe('POST /api/auth/register', () => {
         ).expect(400);
 
         expectErrorBody(res.body, 'Password should not exceed 255 characters');
-        expect(await countUsers()).toBe(0);
+        expect(await UserRepo.countUsers()).toBe(0);
       });
     });
 
@@ -285,12 +280,12 @@ describe('POST /api/auth/register', () => {
         const res = await register(buildUser({ lastName: 'a'.repeat(101) })).expect(400);
 
         expectErrorBody(res.body, 'Last name should not exceed 100 characters');
-        expect(await countUsers()).toBe(0);
+        expect(await UserRepo.countUsers()).toBe(0);
       });
 
       it('rejects name with the length of 1 but with whitespaces', async () => {
         await register(buildUser({ firstName: '  A  ', lastName: '\tLovelace\n' })).expect(400);
-        expect(await countUsers()).toBe(0);
+        expect(await UserRepo.countUsers()).toBe(0);
       });
     });
 
@@ -307,7 +302,7 @@ describe('POST /api/auth/register', () => {
         const res = await register(buildUser({ email: emailOfLength(256) })).expect(400);
 
         expectErrorBody(res.body, 'Email should not exceed 255 characters');
-        expect(await countUsers()).toBe(0);
+        expect(await UserRepo.countUsers()).toBe(0);
       });
     });
 
@@ -318,8 +313,8 @@ describe('POST /api/auth/register', () => {
         const res = await register({ ...buildUser(), id: forcedId }).expect(201);
 
         expect(res.body.user.id).not.toBe(forcedId);
-        const { rows } = await pg.query('SELECT id FROM users WHERE id = $1;', [forcedId]);
-        expect(rows).toHaveLength(0);
+        const user = await UserRepo.findUserById(forcedId);
+        expect(user).toBeNull();
       });
     });
   });

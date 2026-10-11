@@ -16,6 +16,19 @@ class RefreshToken {
     return toRefreshTokenDomain(refreshToken.rows[0]);
   }
 
+  async findRefreshTokenByUserId(userId: string) {
+    const refreshToken = await pg.query<RefreshTokenRow>(
+      `SELECT * FROM refresh_tokens WHERE refresh_token_hash = $1 AND expires_at > NOW()`,
+      [userId],
+    );
+
+    if (!refreshToken.rows[0]) {
+      return null;
+    }
+
+    return toRefreshTokenDomain(refreshToken.rows[0]);
+  }
+
   async updateRefreshToken(oldRefreshTokenHash: string, newRefreshToken: string, expiresAt: Date) {
     const updated = await pg.query(
       `UPDATE refresh_tokens SET refresh_token_hash = $1, expires_at = $2 WHERE refresh_token_hash = $3;`,

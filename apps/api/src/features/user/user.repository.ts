@@ -50,6 +50,12 @@ class User {
 
     return toUserDomain(user.rows[0]);
   }
+
+  async countUsers() {
+    const count = await pg.query(`SELECT COUNT(*) FROM users;`);
+
+    return Number(count.rows[0].count);
+  }
 }
 
 export const UserRepo = new User();

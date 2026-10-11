@@ -5,6 +5,7 @@ import { app } from '../../../app.js';
 import { pg } from '../../../db/pg.js';
 import { hashString } from '../utils/hashing.js';
 import { existingUser, seedUser, getCookie } from './utils.js';
+import { RefreshTokenRepo } from '../auth.repository.js';
 
 const ENDPOINT = '/api/auth/refresh';
 
@@ -36,21 +37,6 @@ function signToken(
   secret = process.env.SECRET_KEY!,
 ) {
   return jwt.sign(payload, secret, options);
-}
-
-async function storeRefreshToken(token: string, userId: string, expiresAt: Date) {
-  await pg.query(
-    'INSERT INTO refresh_tokens (refresh_token_hash, user_id, expires_at) VALUES ($1, $2, $3);',
-    [hashString(token), userId, expiresAt],
-  );
-}
-
-async function getStoredTokens(userId: string) {
-  const { rows } = await pg.query<{ refresh_token_hash: string; expires_at: Date }>(
-    'SELECT refresh_token_hash, expires_at FROM refresh_tokens WHERE user_id = $1;',
-    [userId],
-  );
-  return rows;
 }
 
 function daysFromNow(days: number) {
@@ -254,7 +240,7 @@ describe('POST /api/auth/refresh', () => {
 
       await refresh(refreshToken).expect(200);
 
-      expect(await getStoredTokens(user.id)).toHaveLength(1);
+      expect(await RefreshTokenRepo.findRefreshTokenByUserId(user.id)).toBeDefined();
     });
 
     it('never stores the refresh token in plain text', async () => {
@@ -264,9 +250,9 @@ describe('POST /api/auth/refresh', () => {
       const res = await refresh(refreshToken).expect(200);
       const newRefreshToken = getCookie(res, 'refreshToken')!.value;
 
-      const stored = await getStoredTokens(user.id);
-      expect(stored.map((row) => row.refresh_token_hash)).not.toContain(newRefreshToken);
-      expect(stored.map((row) => row.refresh_token_hash)).not.toContain(refreshToken);
+      const stored = await RefreshTokenRepo.findRefreshTokenByUserId(user.id);
+      expect(stored?.refreshTokenHash).not.toBe(newRefreshToken);
+      expect(stored?.refreshTokenHash).not.toBe(refreshToken);
     });
   });
 
@@ -335,7 +321,11 @@ describe('POST /api/auth/refresh', () => {
         { expiresIn: '15d' },
         'not-the-real-secret',
       );
-      await storeRefreshToken(forged, user.id, daysFromNow(15));
+      await RefreshTokenRepo.createRefreshToken({
+        refreshTokenHash: hashString(forged),
+        userId: user.id,
+        expiresAt: daysFromNow(15),
+      });
 
       const res = await refresh(forged);
 
@@ -381,7 +371,11 @@ describe('POST /api/auth/refresh', () => {
         role: user.role,
         exp: Math.floor(Date.now() / 1000) - 60,
       });
-      await storeRefreshToken(expired, user.id, daysFromNow(15));
+      await RefreshTokenRepo.createRefreshToken({
+        refreshTokenHash: hashString(expired),
+        userId: user.id,
+        expiresAt: daysFromNow(15),
+      });
 
       const res = await refresh(expired);
 
