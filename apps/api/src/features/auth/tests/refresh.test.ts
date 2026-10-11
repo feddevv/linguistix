@@ -240,7 +240,7 @@ describe('POST /api/auth/refresh', () => {
 
       await refresh(refreshToken).expect(200);
 
-      expect(await RefreshTokenRepo.findRefreshTokenByUserId(user.id)).toBeDefined();
+      expect(await RefreshTokenRepo.findRefreshTokensByUserId(user.id)).toBeDefined();
     });
 
     it('never stores the refresh token in plain text', async () => {
@@ -250,9 +250,9 @@ describe('POST /api/auth/refresh', () => {
       const res = await refresh(refreshToken).expect(200);
       const newRefreshToken = getCookie(res, 'refreshToken')!.value;
 
-      const stored = await RefreshTokenRepo.findRefreshTokenByUserId(user.id);
-      expect(stored?.refreshTokenHash).not.toBe(newRefreshToken);
-      expect(stored?.refreshTokenHash).not.toBe(refreshToken);
+      const stored = await RefreshTokenRepo.findRefreshTokensByUserId(user.id);
+      expect(stored?.map((row) => row.refreshTokenHash)).not.toContain(newRefreshToken);
+      expect(stored?.map((row) => row.refreshTokenHash)).not.toContain(refreshToken);
     });
   });
 

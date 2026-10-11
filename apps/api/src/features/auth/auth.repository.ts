@@ -1,5 +1,5 @@
 import { pg } from '../../db/pg.js';
-import { toRefreshTokenDomain } from '../../utils/mappers.js';
+import { toRefreshTokenDomain, toRefreshTokenDomainList } from '../../utils/mappers.js';
 import type { RefreshTokenInputDto, RefreshTokenRow } from './auth.types.js';
 
 class RefreshToken {
@@ -16,17 +16,17 @@ class RefreshToken {
     return toRefreshTokenDomain(refreshToken.rows[0]);
   }
 
-  async findRefreshTokenByUserId(userId: string) {
+  async findRefreshTokensByUserId(userId: string) {
     const refreshToken = await pg.query<RefreshTokenRow>(
-      `SELECT * FROM refresh_tokens WHERE refresh_token_hash = $1 AND expires_at > NOW()`,
+      `SELECT * FROM refresh_tokens WHERE user_id = $1 AND expires_at > NOW()`,
       [userId],
     );
 
-    if (!refreshToken.rows[0]) {
+    if (!refreshToken || refreshToken.rows.length < 1) {
       return null;
     }
 
-    return toRefreshTokenDomain(refreshToken.rows[0]);
+    return toRefreshTokenDomainList(refreshToken.rows);
   }
 
   async updateRefreshToken(oldRefreshTokenHash: string, newRefreshToken: string, expiresAt: Date) {

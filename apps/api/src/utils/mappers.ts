@@ -1,23 +1,31 @@
 import type { RefreshTokenRow, RefreshTokenDomain } from '../features/auth/auth.types.js';
 import type { UserDomain, UserRow } from '../features/user/user.types.js';
 
-export function toUserDomain(userRow: UserRow): UserDomain {
+export function toUserDomain(data: UserRow): UserDomain {
   return {
-    id: userRow.id,
-    firstName: userRow.first_name,
-    lastName: userRow.last_name,
-    email: userRow.email,
-    password: userRow.password,
-    createdAt: userRow.created_at,
-    role: userRow.role,
+    id: data.id,
+    firstName: data.first_name,
+    lastName: data.last_name,
+    email: data.email,
+    password: data.password,
+    createdAt: data.created_at,
+    role: data.role,
   };
 }
 
-export function toRefreshTokenDomain(refreshTokenRow: RefreshTokenRow): RefreshTokenDomain {
+export function toUserDomainList(data: UserRow[]): UserDomain[] {
+  return data.map((row) => toUserDomain(row));
+}
+
+export function toRefreshTokenDomain(data: RefreshTokenRow): RefreshTokenDomain {
   return {
-    id: refreshTokenRow.id,
-    refreshTokenHash: refreshTokenRow.refresh_token_hash,
-    userId: refreshTokenRow.user_id,
-    expiresAt: refreshTokenRow.expires_at,
+    id: data.id,
+    refreshTokenHash: data.refresh_token_hash,
+    userId: data.user_id,
+    expiresAt: data.expires_at,
   };
+}
+
+export function toRefreshTokenDomainList(data: RefreshTokenRow[]): RefreshTokenDomain[] {
+  return data.map((row) => toRefreshTokenDomain(row));
 }
