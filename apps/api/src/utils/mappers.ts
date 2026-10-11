@@ -1,4 +1,9 @@
-import type { UserDomain, UserRow } from '../auth/auth.types.js';
+import type {
+  UserDomain,
+  UserRow,
+  RefreshTokenRow,
+  RefreshTokenDomain,
+} from '../auth/auth.types.js';
 
 export function toUserDomain(userRow: UserRow): UserDomain {
   return {
@@ -9,5 +14,14 @@ export function toUserDomain(userRow: UserRow): UserDomain {
     password: userRow.password,
     createdAt: userRow.created_at,
     role: userRow.role,
+  };
+}
+
+export function toRefreshTokenDomain(refreshTokenRow: RefreshTokenRow): RefreshTokenDomain {
+  return {
+    id: refreshTokenRow.id,
+    refreshTokenHash: refreshTokenRow.refresh_token_hash,
+    userId: refreshTokenRow.user_id,
+    expiresAt: refreshTokenRow.expires_at,
   };
 }

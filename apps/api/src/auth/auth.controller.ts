@@ -54,3 +54,25 @@ export async function login(
     },
   });
 }
+
+export async function refresh(req: Request, res: Response) {
+  const refreshToken = req.cookies.refreshToken as string;
+
+  const { newAccessToken, newRefreshToken } = await authService.refresh(refreshToken);
+
+  res.cookie('accessToken', newAccessToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 15 * 60 * 1000,
+  });
+
+  res.cookie('refreshToken', newRefreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 15 * 24 * 60 * 60 * 1000,
+  });
+
+  res.json({ message: 'Refreshed' });
+}

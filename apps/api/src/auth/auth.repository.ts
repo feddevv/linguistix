@@ -1,7 +1,7 @@
 import { DatabaseError } from 'pg';
 import { pg } from '../db/pg.js';
-import { toUserDomain } from '../utils/mappers.js';
-import type { UserRow } from './auth.types.js';
+import { toRefreshTokenDomain, toUserDomain } from '../utils/mappers.js';
+import type { RefreshTokenRow, UserRow } from './auth.types.js';
 import { HttpError } from '../errors/HttpError.js';
 import type { RegisterInput } from '@repo/shared';
 
@@ -42,6 +42,41 @@ class User {
 
     return toUserDomain(user.rows[0]);
   }
+
+  async findUserById(id: string) {
+    const user = await pg.query<UserRow>(`SELECT * FROM users WHERE id = $1`, [id]);
+
+    if (!user.rows[0]) return null;
+
+    return toUserDomain(user.rows[0]);
+  }
+}
+
+class RefreshToken {
+  async findRefreshTokenByHash(refreshTokenHash: string) {
+    const refreshToken = await pg.query<RefreshTokenRow>(
+      `SELECT * FROM refresh_tokens WHERE refresh_token_hash = $1`,
+      [refreshTokenHash],
+    );
+
+    if (!refreshToken.rows[0]) {
+      return null;
+    }
+
+    return toRefreshTokenDomain(refreshToken.rows[0]);
+  }
+
+  async updateRefreshTokenByHash(
+    oldRefreshTokenHash: string,
+    newRefreshToken: string,
+    expiresAt: Date,
+  ) {
+    await pg.query(
+      `UPDATE refresh_tokens SET refresh_token_hash = $1, expires_at = $2 WHERE refresh_token_hash = $3;`,
+      [newRefreshToken, expiresAt, oldRefreshTokenHash],
+    );
+  }
 }
 
 export const UserRepo = new User();
+export const RefreshTokenRepo = new RefreshToken();

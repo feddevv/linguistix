@@ -7,3 +7,4 @@ export const router: Router = Router();
 
 router.post('/auth/register', validate({ body: registerSchema }), authController.register);
 router.post('/auth/login', validate({ body: loginSchema }), authController.login);
+router.post('/auth/refresh', authController.refresh);
