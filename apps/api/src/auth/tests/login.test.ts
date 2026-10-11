@@ -5,6 +5,7 @@ import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { app } from '../../app.js';
 import { pg } from '../../db/pg.js';
 import { LoginInput } from '@repo/shared';
+import { createHash } from 'node:crypto';
 
 const ENDPOINT = '/api/auth/login';
 const INVALID_CREDENTIALS = 'Email or password is incorrect';
@@ -22,7 +23,8 @@ const existingUser = {
 
 async function seedUser(overrides: Partial<typeof existingUser> = {}) {
   const user = { ...existingUser, ...overrides };
-  const passwordHash = await hash(user.password, 10);
+  const sha256hash = createHash('sha256').update(user.password).digest('hex');
+  const passwordHash = await hash(sha256hash, 10);
 
   const { rows } = await pg.query<{ id: string }>(
     `
