@@ -78,13 +78,15 @@ export async function refresh(refreshToken: string | undefined) {
 
   const user = await UserRepo.findUserById(dbToken.userId);
 
+  if (!user) throw new HttpError(401, "Current user doesn't exist");
+
   const newAccessToken = jwt.sign(
-    { id: user!.id, email: user!.email, role: user!.role },
+    { id: user.id, email: user.email, role: user.role },
     process.env.SECRET_KEY!,
     { expiresIn: '15m' },
   );
   const newRefreshToken = jwt.sign(
-    { id: user!.id, email: user!.email, role: user!.role },
+    { id: user.id, email: user.email, role: user.role },
     process.env.SECRET_KEY!,
     { expiresIn: '15d' },
   );
