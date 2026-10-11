@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
 
-export function preparePassword(password: string) {
-  return createHash('sha256').update(password).digest('hex');
+export function hashString(str: string) {
+  return createHash('sha256').update(str).digest('hex');
 }

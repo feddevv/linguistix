@@ -4,11 +4,11 @@ import { compare, hash } from 'bcrypt';
 import { HttpError } from '../errors/HttpError.js';
 import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { createHash } from 'node:crypto';
-import { preparePassword } from './utils/hashing.js';
+import { hashString } from './utils/hashing.js';
 import { pg } from '../db/pg.js';
 
 export async function register({ firstName, lastName, password, email, role }: RegisterInput) {
-  const sha256hash = preparePassword(password);
+  const sha256hash = hashString(password);
   const passwordHash = await hash(sha256hash, 10);
 
   const user = await UserRepo.createUser({
@@ -27,7 +27,7 @@ export async function login({ email, password }: LoginInput) {
 
   if (!user) throw new HttpError(401, 'Email or password is incorrect');
 
-  const sha256hash = preparePassword(password);
+  const sha256hash = hashString(password);
   const isMatch = await compare(sha256hash, user.password);
 
   if (!isMatch) throw new HttpError(401, 'Email or password is incorrect');
@@ -71,7 +71,7 @@ export async function refresh(refreshToken: string | undefined) {
     throw new HttpError(401, 'Invalid or expired token');
   }
 
-  const hashedRefreshToken = createHash('sha256').update(refreshToken).digest('hex');
+  const hashedRefreshToken = hashString(refreshToken);
   const dbToken = await RefreshTokenRepo.findRefreshTokenByHash(hashedRefreshToken);
 
   if (!dbToken) throw new HttpError(401, 'Invalid or expired token');
@@ -89,10 +89,11 @@ export async function refresh(refreshToken: string | undefined) {
     { expiresIn: '15d' },
   );
 
-  const hashedNewRefreshToken = createHash('sha256').update(newRefreshToken).digest('hex');
+  const hashedNewRefreshToken = hashString(newRefreshToken);
 
   const newExpiresAt = new Date();
   newExpiresAt.setDate(newExpiresAt.getDate() + 15);
+
   await RefreshTokenRepo.updateRefreshTokenByHash(
     hashedRefreshToken,
     hashedNewRefreshToken,
