@@ -98,11 +98,13 @@ export async function refresh(refreshToken: string | undefined) {
   const newExpiresAt = new Date();
   newExpiresAt.setDate(newExpiresAt.getDate() + 15);
 
-  await RefreshTokenRepo.updateRefreshToken(
+  const updated = await RefreshTokenRepo.updateRefreshToken(
     hashedRefreshToken,
     hashedNewRefreshToken,
     newExpiresAt,
   );
+
+  if (!updated || updated < 1) throw new HttpError(401, 'Invalid or expired token');
 
   return { newAccessToken, newRefreshToken };
 }
