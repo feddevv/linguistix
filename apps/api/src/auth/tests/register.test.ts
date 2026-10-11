@@ -6,6 +6,7 @@ import { app } from '../../app.js';
 import { pg } from '../../db/pg.js';
 import { UserRepo } from '../auth.repository.js';
 import { UUID_REGEX } from './utils.js';
+import { createHash } from 'node:crypto';
 
 const ENDPOINT = '/api/auth/register';
 
@@ -90,7 +91,11 @@ describe('POST /api/auth/register', () => {
       expect(row!.lastName).toBe(user.lastName);
       expect(row!.role).toBe(user.role);
       expect(row!.password).not.toBe(user.password);
-      expect(await compare(user.password as string, row!.password)).toBe(true);
+
+      const sha256hash = createHash('sha256')
+        .update(user.password as string)
+        .digest('hex');
+      expect(await compare(sha256hash, row!.password)).toBe(true);
     });
   });
 
@@ -215,7 +220,8 @@ describe('POST /api/auth/register', () => {
         await register(buildUser({ password, confirmPassword: password })).expect(201);
 
         const row = await UserRepo.findUserByEmail('ada.lovelace@example.com');
-        expect(await compare(password, row!.password)).toBe(true);
+        const sha256hash = createHash('sha256').update(password).digest('hex');
+        expect(await compare(sha256hash, row!.password)).toBe(true);
       });
 
       it('rejects a password of 5 characters', async () => {
