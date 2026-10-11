@@ -56,7 +56,7 @@ export async function login(
 }
 
 export async function refresh(req: Request, res: Response) {
-  const refreshToken = req.cookies.refreshToken as string;
+  const refreshToken = req.cookies.refreshToken as string | undefined;
 
   const { newAccessToken, newRefreshToken } = await authService.refresh(refreshToken);
 

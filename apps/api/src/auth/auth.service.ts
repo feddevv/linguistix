@@ -62,7 +62,9 @@ export async function login({ email, password }: LoginInput) {
   };
 }
 
-export async function refresh(refreshToken: string) {
+export async function refresh(refreshToken: string | undefined) {
+  if (!refreshToken) throw new HttpError(401, 'Refresh token is not attached');
+
   try {
     jwt.verify(refreshToken, process.env.SECRET_KEY!);
   } catch (err) {
