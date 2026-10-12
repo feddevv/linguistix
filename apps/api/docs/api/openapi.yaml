@@ -26,6 +26,8 @@ info:
     - When the access token expires, call `POST /api/auth/refresh` to get a new
       pair of tokens. Refresh tokens are **rotated**: each one can be used only
       once.
+    - `POST /api/auth/logout` ends the current session: its stored refresh token
+      is deleted and both cookies are cleared. Other sessions stay valid.
 
 servers:
   - url: http://localhost:3000
@@ -145,7 +147,7 @@ paths:
         '200':
           $ref: '#/components/responses/RefreshSuccess'
         '400':
-          $ref: '#/components/responses/RefreshBadRequest'
+          $ref: '#/components/responses/MalformedJsonBody'
         '401':
           $ref: '#/components/responses/RefreshUnauthorized'
         '413':
@@ -155,6 +157,46 @@ paths:
         '500':
           $ref: '#/components/responses/RefreshInternalServerError'
 
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      security:
+        - refreshTokenCookie: []
+        - {}
+      summary: Log out
+      description: |
+        Ends the current session and clears the session cookies.
+
+        - The refresh token is read **only** from the `refreshToken` cookie. A token
+          sent in the request body or in the `Authorization` header is ignored. The
+          `accessToken` cookie is not needed and is not checked.
+        - No request body is needed, and any body is ignored. A body that is sent
+          as JSON is still parsed, so it must be valid JSON, UTF-8 encoded and at
+          most 100 KB (see the `400`, `413` and `415` responses).
+        - The session whose stored hash matches the refresh token is deleted, so
+          the token can no longer be used with `POST /api/auth/refresh`. The JWT is
+          **not** verified first: a session is ended even if its token has already
+          expired. Other sessions of the user, and sessions of other users, are not
+          affected.
+        - The operation is **idempotent** and does not require a session. It
+          succeeds with `200` when the cookie is missing, empty, not a string (for
+          example a `j:`-prefixed JSON cookie), malformed, never issued, or already
+          logged out. In those cases no session is deleted.
+        - Both `accessToken` and `refreshToken` cookies are cleared on `200` and on
+          `500`.
+      responses:
+        '200':
+          $ref: '#/components/responses/LogoutSuccess'
+        '400':
+          $ref: '#/components/responses/MalformedJsonBody'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/LogoutInternalServerError'
+
 components:
   securitySchemes:
     refreshTokenCookie:
@@ -163,7 +205,9 @@ components:
       name: refreshToken
       description: |
         Refresh token JWT set by `POST /api/auth/login` or `POST /api/auth/refresh`.
-        The cookie is `HttpOnly`, so browsers send it automatically.
+        The cookie is `HttpOnly`, so browsers send it automatically. It is
+        required by `POST /api/auth/refresh` and optional for
+        `POST /api/auth/logout`.
 
   schemas:
     Role:
@@ -420,6 +464,26 @@ components:
           example:
             message: Refreshed
 
+    LogoutSuccess:
+      description: |
+        Logged out, or there was no session to end. Both session cookies are
+        cleared. The body is the plain-text status text `OK`.
+      headers:
+        Set-Cookie:
+          description: |
+            Two cookies are cleared, one per `Set-Cookie` header: `accessToken`
+            and `refreshToken`, each with an empty value and an expiry date in
+            the past.
+          schema:
+            type: string
+          example: refreshToken=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax
+      content:
+        text/plain:
+          schema:
+            type: string
+            enum: [OK]
+          example: OK
+
     BadRequest:
       description: |
         The request body is missing, is not valid JSON, is not a JSON object, or
@@ -572,7 +636,7 @@ components:
               value:
                 message: Password should not exceed 255 characters
 
-    RefreshBadRequest:
+    MalformedJsonBody:
       description: |
         The request has a JSON `Content-Type` but its body is not valid JSON. The
         session cookies are not changed.
@@ -602,13 +666,16 @@ components:
             $ref: '#/components/schemas/Error'
           examples:
             notAttached:
-              summary: The refreshToken cookie is missing or empty
+              summary: |
+                The refreshToken cookie is missing, empty, or not a string (for example
+                a `j:`-prefixed cookie that is parsed as JSON)
               value:
                 message: Refresh token is not attached
             invalidOrExpired:
               summary: |
                 The token is malformed, has a bad signature or has expired; its session
-                is not stored, has expired or was revoked; or it was already rotated
+                is not stored, has expired or was ended by `POST /api/auth/logout`; or
+                it was already rotated
               value:
                 message: Invalid or expired token
             userNotFound:
@@ -676,6 +743,27 @@ components:
       description: |
         Unexpected server error, such as the database being unavailable. Both
         session cookies are cleared.
+      headers:
+        Set-Cookie:
+          description: |
+            Two cookies are cleared, one per `Set-Cookie` header: `accessToken`
+            and `refreshToken`, each with an empty value and an expiry date in
+            the past.
+          schema:
+            type: string
+          example: accessToken=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            message: Internal server error!
+
+    LogoutInternalServerError:
+      description: |
+        Unexpected server error, such as the database being unavailable. Both
+        session cookies are still cleared, but the stored session may not have
+        been deleted.
       headers:
         Set-Cookie:
           description: |
