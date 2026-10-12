@@ -4,26 +4,13 @@ import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { app } from '../../../app.js';
 import { pg } from '../../../db/pg.js';
 import { hashString } from '../utils/hashing.js';
-import { existingUser, seedUser, getCookie } from './utils.js';
+import { existingUser, seedUser, getCookie, loginAs, expectAuthCookiesCleared } from './utils.js';
 import { RefreshTokenRepo } from '../auth.repository.js';
 
 const ENDPOINT = '/api/auth/refresh';
 
 const ACCESS_TOKEN_TTL = 15 * 60;
 const REFRESH_TOKEN_TTL = 15 * 24 * 60 * 60;
-
-// Logs the user in through the real endpoint and returns the issued tokens.
-async function loginAs(user: { email: string; password: string }) {
-  const res = await request(app)
-    .post('/api/auth/login')
-    .send({ email: user.email, password: user.password })
-    .expect(200);
-
-  return {
-    accessToken: getCookie(res, 'accessToken')!.value,
-    refreshToken: getCookie(res, 'refreshToken')!.value,
-  };
-}
 
 function refresh(refreshToken?: string) {
   const req = request(app).post(ENDPOINT);
@@ -59,22 +46,6 @@ function expectNoNewTokens(res: Response) {
     if (!cookie) continue;
 
     expect(cookie.value).toBe('');
-  }
-}
-
-function expectAuthCookiesCleared(res: Response) {
-  for (const name of ['accessToken', 'refreshToken']) {
-    const cookie = getCookie(res, name);
-
-    expect(cookie, `${name} cookie should be cleared`).toBeDefined();
-    expect(cookie!.value).toBe('');
-
-    const expires = cookie!.attrs.get('expires');
-    const maxAge = cookie!.attrs.get('max-age');
-    const isExpired =
-      (expires !== undefined && new Date(expires).getTime() <= Date.now()) ||
-      (maxAge !== undefined && Number(maxAge) <= 0);
-    expect(isExpired).toBe(true);
   }
 }
 
