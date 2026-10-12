@@ -13,7 +13,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         last_name VARCHAR(100) NOT NULL,
         email VARCHAR(255) NOT NULL UNIQUE,
         password VARCHAR(255) NOT NULL,
-        created_at DATE NOT NULL DEFAULT CURRENT_DATE,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_DATE,
         role user_role NOT NULL
       );
 
@@ -21,14 +21,16 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         id UUID PRIMARY KEY DEFAULT uuidv7(),
         room_name VARCHAR(100) NOT NULL,
         meeting_url TEXT,
-        owner_id UUID REFERENCES users(id) ON DELETE RESTRICT,
+        owner_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
         created_at DATE NOT NULL DEFAULT CURRENT_DATE
       );
 
       CREATE TABLE IF NOT EXISTS "room_members" (
         id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-        room_id UUID REFERENCES rooms(id) ON DELETE CASCADE
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        room_id UUID NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+
+        UNIQUE(user_id, room_id)
       );
 
       CREATE TYPE lesson_status AS ENUM ('scheduled', 'completed', 'canceled', 'in_progress');
@@ -37,9 +39,9 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         id UUID PRIMARY KEY DEFAULT uuidv7(),
         meeting_url TEXT,
         teacher_id UUID REFERENCES users(id) ON DELETE CASCADE,
-        room_id UUID REFERENCES rooms(id) ON DELETE CASCADE,
-        scheduled_at DATE NOT NULL DEFAULT CURRENT_DATE,
-        ends_at DATE NOT NULL,
+        room_id UUID NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+        scheduled_at TIMESTAMP NOT NULL DEFAULT CURRENT_DATE,
+        ends_at TIMESTAMP NOT NULL,
         status lesson_status NOT NULL DEFAULT 'scheduled'
       );
 
@@ -50,11 +52,11 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         title VARCHAR(255),
         content TEXT,
         teacher_id UUID REFERENCES users(id) ON DELETE SET NULL,
-        room_id UUID REFERENCES rooms(id) ON DELETE CASCADE,
-        assigned_at DATE,
-        due_to DATE,
+        room_id UUID NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+        assigned_at TIMESTAMP,
+        due_to TIMESTAMP,
         status assignment_status NOT NULL DEFAULT 'draft',
-        max_grade SMALLINT
+        max_grade SMALLINT,
 
         CONSTRAINT chk_published_field_not_null CHECK (
           status = 'draft' OR (
@@ -64,18 +66,20 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         )
       );
 
-      CREATE TYPE submission_status AS ENUM ('pending', 'submited', 'needs_revision', 'reviewed');
+      CREATE TYPE submission_status AS ENUM ('pending', 'submitted', 'needs_revision', 'reviewed');
 
       CREATE TABLE IF NOT EXISTS "submissions" (
         id UUID PRIMARY KEY DEFAULT uuidv7(),
         content TEXT NOT NULL,
-        student_id UUID REFERENCES users(id) ON DELETE CASCADE,
-        assignment_id UUID REFERENCES assignments(id) ON DELETE CASCADE,
-        submitted_at DATE NOT NULL DEFAULT CURRENT_DATE,
+        student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        assignment_id UUID NOT NULL REFERENCES assignments(id) ON DELETE CASCADE,
+        submitted_at TIMESTAMP NOT NULL DEFAULT CURRENT_DATE,
         status submission_status NOT NULL DEFAULT 'pending',
         feedback TEXT,
         grade SMALLINT,
-        reviewed_at DATE NOT NULL
+        reviewed_at TIMESTAMP,
+
+        UNIQUE(student_id, assignment_id)
       );
 
       CREATE TABLE IF NOT EXISTS "words" (
@@ -84,8 +88,15 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         meaning TEXT NOT NULL,
         room_id UUID REFERENCES rooms(id) ON DELETE CASCADE,
         content_sentence TEXT NOT NULL,
-        created_by UUID REFERENCES users(id) ON DELETE SET NULL,
-        created_at DATE NOT NULL DEFAULT CURRENT_DATE
+        created_by UUID NOT NULL REFERENCES users(id) ON DELETE SET NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_DATE
+      );
+
+      CREATE TABLE IF NOT EXISTS "refresh_tokens" (
+        id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        refresh_token_hash TEXT NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE
       );
     `,
   );
@@ -100,6 +111,7 @@ export async function down(pgm: MigrationBuilder): Promise<void> {
       DROP TABLE IF EXISTS assignments;
       DROP TABLE IF EXISTS "words";
       DROP TABLE IF EXISTS rooms;
+      DROP TABLE IF EXISTS refresh_tokens;
       DROP TABLE IF EXISTS users;
 
       DROP TYPE IF EXISTS user_role;

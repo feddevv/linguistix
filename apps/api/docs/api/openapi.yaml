@@ -1,0 +1,781 @@
+openapi: 3.0.3
+
+info:
+  title: Linguistix API
+  version: 0.0.1
+  description: |
+    HTTP API of the Linguistix platform.
+
+    ## Error format
+    Every non-2xx response has the same shape: `{ "message": string }`.
+    Validation errors report **only the first** failing rule. Fields are checked
+    in the order in which they are listed in each request schema; cross-field
+    rules (such as the password confirmation match) run last.
+
+    ## Authentication
+    `POST /api/auth/login` sets two `HttpOnly` cookies, `accessToken` and
+    `refreshToken`, that hold signed JWTs. Browsers send them automatically on
+    later requests.
+
+    - `accessToken` lives 15 minutes, `refreshToken` lives 15 days.
+    - Both JWTs carry the same claims: `id`, `email`, `role`, a random `jti`,
+      `iat` and `exp`.
+    - Every login starts a new session: a SHA-256 hash of its refresh token is
+      stored on the server. A user can have several sessions at once (for
+      example, on different devices).
+    - When the access token expires, call `POST /api/auth/refresh` to get a new
+      pair of tokens. Refresh tokens are **rotated**: each one can be used only
+      once.
+    - `POST /api/auth/logout` ends the current session: its stored refresh token
+      is deleted and both cookies are cleared. Other sessions stay valid.
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+
+tags:
+  - name: Auth
+    description: Registration and authentication
+
+paths:
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      operationId: register
+      security: []
+      summary: Register a new user
+      description: |
+        Creates a new user account with the role `student` or `teacher`.
+
+        - Fields are validated in the order `firstName` → `lastName` → `email` →
+          `password` → `confirmPassword` → `role`; only the first error is returned.
+        - String fields `firstName`, `lastName`, `password` and `confirmPassword` are
+          **trimmed** before their length is validated, and the trimmed value is stored.
+        - `confirmPassword` must equal `password` after both are trimmed. The
+          `Passwords don't match` error is returned only when every other rule passes.
+          `confirmPassword` itself is not stored.
+        - `email` is **not** trimmed. It is lower-cased before it is stored, so it is
+          unique regardless of letter case (`Ada@Example.com` and `ada@example.com` are
+          treated as the same address).
+        - The password is hashed with SHA-256 and then with bcrypt, so passwords
+          longer than 72 bytes are not truncated. It is never returned.
+        - Unknown properties (for example `id`) are silently ignored.
+        - The user is **not** logged in; no cookies are set. Call `POST /api/auth/login`
+          afterwards.
+      requestBody:
+        $ref: '#/components/requestBodies/RegisterRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/RegisterSuccess'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/EmailConflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      security: []
+      summary: Log in
+      description: |
+        Authenticates a user by email and password and sets the session cookies.
+
+        - Fields are validated in the order `email` → `password` with the same rules
+          as in `POST /api/auth/register`; only the first error is returned.
+        - `email` is lower-cased before lookup, so login is case-insensitive.
+          `password` is trimmed before it is compared.
+        - On success, the response sets two cookies, both `HttpOnly`, `SameSite=Lax`
+          and `Path=/`, plus `Secure` when the server runs in production:
+          - `accessToken`: JWT valid for 15 minutes (`Max-Age=900`).
+          - `refreshToken`: JWT valid for 15 days (`Max-Age=1296000`).
+        - Each successful login starts a new session; sessions started earlier stay
+          valid.
+        - Unknown properties are silently ignored.
+      requestBody:
+        $ref: '#/components/requestBodies/LoginRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/LoginSuccess'
+        '400':
+          $ref: '#/components/responses/LoginBadRequest'
+        '401':
+          $ref: '#/components/responses/InvalidCredentials'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refresh
+      security:
+        - refreshTokenCookie: []
+      summary: Refresh the session tokens
+      description: |
+        Exchanges a valid refresh token for a new access token and a new refresh
+        token.
+
+        - The refresh token is read **only** from the `refreshToken` cookie. A token
+          sent in the request body or in the `Authorization` header is ignored.
+        - No request body is needed, and any body is ignored. A body that is sent
+          as JSON is still parsed, so it must be valid JSON, UTF-8 encoded and at
+          most 100 KB (see the `400`, `413` and `415` responses).
+        - The refresh token is accepted only if its JWT signature and expiry are
+          valid **and** its session is stored on the server and has not expired.
+          An access token cannot be used as a refresh token.
+        - The new tokens are built from the current user record, so changes to the
+          user (for example, the role) are applied.
+        - The refresh token is **rotated**: the presented token is replaced by the
+          new one and cannot be used again. If the same token is sent in two
+          concurrent requests, only one of them succeeds. Other sessions of the
+          user are not affected.
+        - On success, the response sets the same two cookies as
+          `POST /api/auth/login`.
+        - On `401` or `500`, both `accessToken` and `refreshToken` cookies are
+          cleared.
+      responses:
+        '200':
+          $ref: '#/components/responses/RefreshSuccess'
+        '400':
+          $ref: '#/components/responses/MalformedJsonBody'
+        '401':
+          $ref: '#/components/responses/RefreshUnauthorized'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/RefreshInternalServerError'
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      security:
+        - refreshTokenCookie: []
+        - {}
+      summary: Log out
+      description: |
+        Ends the current session and clears the session cookies.
+
+        - The refresh token is read **only** from the `refreshToken` cookie. A token
+          sent in the request body or in the `Authorization` header is ignored. The
+          `accessToken` cookie is not needed and is not checked.
+        - No request body is needed, and any body is ignored. A body that is sent
+          as JSON is still parsed, so it must be valid JSON, UTF-8 encoded and at
+          most 100 KB (see the `400`, `413` and `415` responses).
+        - The session whose stored hash matches the refresh token is deleted, so
+          the token can no longer be used with `POST /api/auth/refresh`. The JWT is
+          **not** verified first: a session is ended even if its token has already
+          expired. Other sessions of the user, and sessions of other users, are not
+          affected.
+        - The operation is **idempotent** and does not require a session. It
+          succeeds with `200` when the cookie is missing, empty, not a string (for
+          example a `j:`-prefixed JSON cookie), malformed, never issued, or already
+          logged out. In those cases no session is deleted.
+        - Both `accessToken` and `refreshToken` cookies are cleared on `200` and on
+          `500`.
+      responses:
+        '200':
+          $ref: '#/components/responses/LogoutSuccess'
+        '400':
+          $ref: '#/components/responses/MalformedJsonBody'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/LogoutInternalServerError'
+
+components:
+  securitySchemes:
+    refreshTokenCookie:
+      type: apiKey
+      in: cookie
+      name: refreshToken
+      description: |
+        Refresh token JWT set by `POST /api/auth/login` or `POST /api/auth/refresh`.
+        The cookie is `HttpOnly`, so browsers send it automatically. It is
+        required by `POST /api/auth/refresh` and optional for
+        `POST /api/auth/logout`.
+
+  schemas:
+    Role:
+      type: string
+      description: User role. Case-sensitive.
+      enum: [student, teacher]
+      example: student
+
+    UserId:
+      type: string
+      format: uuid
+      description: User identifier (UUID v7) generated by the server.
+      example: 0199c4a2-7e3b-7a51-9d2f-3b8e6c1a4f07
+
+    FirstName:
+      type: string
+      description: |
+        Given name. Leading and trailing whitespace is trimmed before validation;
+        the trimmed value must be 2–100 characters long.
+      minLength: 2
+      maxLength: 100
+      example: Ada
+
+    LastName:
+      type: string
+      description: |
+        Family name. Leading and trailing whitespace is trimmed before validation;
+        the trimmed value must be 2–100 characters long.
+      minLength: 2
+      maxLength: 100
+      example: Lovelace
+
+    Email:
+      type: string
+      format: email
+      description: |
+        Email address, at most 255 characters. It is not trimmed, so surrounding
+        whitespace makes it invalid. The server lower-cases it before storing it.
+      maxLength: 255
+      pattern: '^(?:[A-Za-z0-9_''+\-]+\.)*[A-Za-z0-9_''+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$'
+      example: ada.lovelace@example.com
+
+    Password:
+      type: string
+      format: password
+      description: |
+        Plain-text password. Leading and trailing whitespace is trimmed before
+        validation; the trimmed value must be 6–255 characters long. An empty or
+        whitespace-only value is reported as missing.
+      minLength: 6
+      maxLength: 255
+      writeOnly: true
+      example: correct-horse-battery
+
+    ConfirmPassword:
+      type: string
+      format: password
+      description: |
+        Repeats `password`. Leading and trailing whitespace is trimmed before
+        validation; the trimmed value must be 6–255 characters long and equal to
+        the trimmed `password`.
+      minLength: 6
+      maxLength: 255
+      writeOnly: true
+      example: correct-horse-battery
+
+    RegisterInput:
+      type: object
+      description: Payload for creating a new user account.
+      required: [firstName, lastName, email, password, confirmPassword, role]
+      properties:
+        firstName:
+          $ref: '#/components/schemas/FirstName'
+        lastName:
+          $ref: '#/components/schemas/LastName'
+        email:
+          $ref: '#/components/schemas/Email'
+        password:
+          $ref: '#/components/schemas/Password'
+        confirmPassword:
+          $ref: '#/components/schemas/ConfirmPassword'
+        role:
+          $ref: '#/components/schemas/Role'
+
+    LoginInput:
+      type: object
+      description: Credentials for logging in.
+      required: [email, password]
+      properties:
+        email:
+          $ref: '#/components/schemas/Email'
+        password:
+          $ref: '#/components/schemas/Password'
+
+    UserDTO:
+      type: object
+      description: Public representation of a user. Never contains the password.
+      required: [id, firstName, lastName, email, role]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/UserId'
+        firstName:
+          $ref: '#/components/schemas/FirstName'
+        lastName:
+          $ref: '#/components/schemas/LastName'
+        email:
+          $ref: '#/components/schemas/Email'
+        role:
+          $ref: '#/components/schemas/Role'
+
+    UserResponse:
+      type: object
+      description: Response that wraps the public user representation.
+      required: [user]
+      additionalProperties: false
+      properties:
+        user:
+          $ref: '#/components/schemas/UserDTO'
+
+    RegisterResponse:
+      $ref: '#/components/schemas/UserResponse'
+
+    LoginResponse:
+      $ref: '#/components/schemas/UserResponse'
+
+    RefreshResponse:
+      type: object
+      description: Confirms that the session tokens were refreshed.
+      required: [message]
+      additionalProperties: false
+      properties:
+        message:
+          type: string
+          example: Refreshed
+
+    Error:
+      type: object
+      description: Error response returned by the global error handler.
+      required: [message]
+      additionalProperties: false
+      properties:
+        message:
+          type: string
+          description: Message that describes the error and can be shown to a user.
+          example: User with this email already exists
+
+  requestBodies:
+    RegisterRequest:
+      required: true
+      description: New user data. Must be a JSON object, UTF-8 encoded, at most 100 KB.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RegisterInput'
+          examples:
+            student:
+              summary: Register a student
+              value:
+                firstName: Ada
+                lastName: Lovelace
+                email: ada.lovelace@example.com
+                password: correct-horse-battery
+                confirmPassword: correct-horse-battery
+                role: student
+            teacher:
+              summary: Register a teacher
+              value:
+                firstName: Grace
+                lastName: Hopper
+                email: Grace.Hopper@Navy.mil
+                password: C0b0l-1959!
+                confirmPassword: C0b0l-1959!
+                role: teacher
+
+    LoginRequest:
+      required: true
+      description: User credentials. Must be a JSON object, UTF-8 encoded, at most 100 KB.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LoginInput'
+          example:
+            email: ada.lovelace@example.com
+            password: correct-horse-battery
+
+  responses:
+    RegisterSuccess:
+      description: User created.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RegisterResponse'
+          examples:
+            student:
+              summary: Student created
+              value:
+                user:
+                  id: 0199c4a2-7e3b-7a51-9d2f-3b8e6c1a4f07
+                  firstName: Ada
+                  lastName: Lovelace
+                  email: ada.lovelace@example.com
+                  role: student
+            teacher:
+              summary: Teacher created (email lower-cased)
+              value:
+                user:
+                  id: 0199c4a3-1c05-7f2e-8b6a-5d41e9f03c2b
+                  firstName: Grace
+                  lastName: Hopper
+                  email: grace.hopper@navy.mil
+                  role: teacher
+
+    LoginSuccess:
+      description: Logged in. The session cookies are set.
+      headers:
+        Set-Cookie:
+          description: |
+            Two cookies are set, one per `Set-Cookie` header:
+            `accessToken` (15 minutes) and `refreshToken` (15 days). Both are
+            `HttpOnly; SameSite=Lax; Path=/`, and `Secure` in production.
+          schema:
+            type: string
+          example: accessToken=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...; Max-Age=900; Path=/; HttpOnly; SameSite=Lax
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LoginResponse'
+          example:
+            user:
+              id: 0199c4a2-7e3b-7a51-9d2f-3b8e6c1a4f07
+              firstName: Ada
+              lastName: Lovelace
+              email: ada.lovelace@example.com
+              role: student
+
+    RefreshSuccess:
+      description: |
+        Tokens refreshed. New session cookies are set and the presented refresh
+        token is no longer valid. The tokens are never returned in the body.
+      headers:
+        Set-Cookie:
+          description: |
+            Two cookies are set, one per `Set-Cookie` header:
+            `accessToken` (15 minutes) and `refreshToken` (15 days). Both are
+            `HttpOnly; SameSite=Lax; Path=/`, and `Secure` in production.
+          schema:
+            type: string
+          example: refreshToken=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...; Max-Age=1296000; Path=/; HttpOnly; SameSite=Lax
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RefreshResponse'
+          example:
+            message: Refreshed
+
+    LogoutSuccess:
+      description: |
+        Logged out, or there was no session to end. Both session cookies are
+        cleared. The body is the plain-text status text `OK`.
+      headers:
+        Set-Cookie:
+          description: |
+            Two cookies are cleared, one per `Set-Cookie` header: `accessToken`
+            and `refreshToken`, each with an empty value and an expiry date in
+            the past.
+          schema:
+            type: string
+          example: refreshToken=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax
+      content:
+        text/plain:
+          schema:
+            type: string
+            enum: [OK]
+          example: OK
+
+    BadRequest:
+      description: |
+        The request body is missing, is not valid JSON, is not a JSON object, or
+        fails validation. Only the first validation error is returned.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            missingBody:
+              summary: Body is missing or not JSON (for example, wrong Content-Type)
+              value:
+                message: 'Invalid input: expected object, received undefined'
+            bodyIsArray:
+              summary: Body is a JSON array instead of an object
+              value:
+                message: 'Invalid input: expected object, received array'
+            malformedJson:
+              summary: Malformed JSON (trailing comma)
+              value:
+                message: Expected double-quoted property name in JSON at position 20 (line 1 column 21)
+            firstNameRequired:
+              summary: firstName is missing, null or another falsy value (for example `0`)
+              value:
+                message: First name is required
+            firstNameNotString:
+              summary: firstName is not a string
+              value:
+                message: First name should be a string
+            firstNameTooShort:
+              summary: firstName is shorter than 2 characters after trimming
+              value:
+                message: First name should be at least 2 characters long
+            firstNameTooLong:
+              summary: firstName is longer than 100 characters after trimming
+              value:
+                message: First name should not exceed 100 characters
+            lastNameRequired:
+              summary: lastName is missing, null or another falsy value (for example `0`)
+              value:
+                message: Last name is required
+            lastNameNotString:
+              summary: lastName is not a string
+              value:
+                message: Last name should be a string
+            lastNameTooShort:
+              summary: lastName is shorter than 2 characters after trimming
+              value:
+                message: Last name should be at least 2 characters long
+            lastNameTooLong:
+              summary: lastName is longer than 100 characters after trimming
+              value:
+                message: Last name should not exceed 100 characters
+            emailRequired:
+              summary: email is missing, null or an empty string
+              value:
+                message: Email is required
+            emailInvalid:
+              summary: email is not a string or is not a valid address
+              value:
+                message: Invalid email format
+            emailTooLong:
+              summary: email is longer than 255 characters
+              value:
+                message: Email should not exceed 255 characters
+            passwordRequired:
+              summary: password is missing, null, another falsy value (for example `0`), or empty after trimming
+              value:
+                message: Password is required
+            passwordNotString:
+              summary: password is not a string
+              value:
+                message: Password should be a string
+            passwordTooShort:
+              summary: password is shorter than 6 characters after trimming
+              value:
+                message: Password should be at least 6 characters long
+            passwordTooLong:
+              summary: password is longer than 255 characters after trimming
+              value:
+                message: Password should not exceed 255 characters
+            confirmPasswordRequired:
+              summary: confirmPassword is missing, null or another falsy value (for example `0`)
+              value:
+                message: Password confirmation is required
+            confirmPasswordNotString:
+              summary: confirmPassword is not a string
+              value:
+                message: Password confirmation should be a string
+            confirmPasswordTooShort:
+              summary: confirmPassword is shorter than 6 characters after trimming
+              value:
+                message: Password confirmation should be at least 6 characters long
+            confirmPasswordTooLong:
+              summary: confirmPassword is longer than 255 characters after trimming
+              value:
+                message: Password confirmation should not exceed 255 characters
+            roleRequired:
+              summary: role is missing, null or an empty string
+              value:
+                message: Role is required
+            roleInvalid:
+              summary: role is not `student` or `teacher` (case-sensitive)
+              value:
+                message: Role 'admin' doesn't exist
+            passwordsDontMatch:
+              summary: confirmPassword differs from password after trimming (checked last)
+              value:
+                message: Passwords don't match
+
+    LoginBadRequest:
+      description: |
+        The request body is missing, is not valid JSON, is not a JSON object, or
+        fails validation. Only the first validation error is returned.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            missingBody:
+              summary: Body is missing or not JSON (for example, wrong Content-Type)
+              value:
+                message: 'Invalid input: expected object, received undefined'
+            emailRequired:
+              summary: email is missing, null or an empty string
+              value:
+                message: Email is required
+            emailInvalid:
+              summary: email is not a string or is not a valid address
+              value:
+                message: Invalid email format
+            emailTooLong:
+              summary: email is longer than 255 characters
+              value:
+                message: Email should not exceed 255 characters
+            passwordRequired:
+              summary: password is missing, null, another falsy value (for example `0`), or empty after trimming
+              value:
+                message: Password is required
+            passwordNotString:
+              summary: password is not a string
+              value:
+                message: Password should be a string
+            passwordTooShort:
+              summary: password is shorter than 6 characters after trimming
+              value:
+                message: Password should be at least 6 characters long
+            passwordTooLong:
+              summary: password is longer than 255 characters after trimming
+              value:
+                message: Password should not exceed 255 characters
+
+    MalformedJsonBody:
+      description: |
+        The request has a JSON `Content-Type` but its body is not valid JSON. The
+        session cookies are not changed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            message: Unexpected end of JSON input
+
+    RefreshUnauthorized:
+      description: |
+        The refresh token is missing or cannot be used. Both session cookies are
+        cleared.
+      headers:
+        Set-Cookie:
+          description: |
+            Two cookies are cleared, one per `Set-Cookie` header: `accessToken`
+            and `refreshToken`, each with an empty value and an expiry date in
+            the past.
+          schema:
+            type: string
+          example: refreshToken=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            notAttached:
+              summary: |
+                The refreshToken cookie is missing, empty, or not a string (for example
+                a `j:`-prefixed cookie that is parsed as JSON)
+              value:
+                message: Refresh token is not attached
+            invalidOrExpired:
+              summary: |
+                The token is malformed, has a bad signature or has expired; its session
+                is not stored, has expired or was ended by `POST /api/auth/logout`; or
+                it was already rotated
+              value:
+                message: Invalid or expired token
+            userNotFound:
+              summary: The user of the session no longer exists
+              value:
+                message: Current user doesn't exist
+
+    EmailConflict:
+      description: A user with this email (case-insensitive) already exists.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            message: User with this email already exists
+
+    InvalidCredentials:
+      description: |
+        No user has this email, or the password is wrong. The same message is
+        returned in both cases.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            message: Email or password is incorrect
+
+    PayloadTooLarge:
+      description: The request body is larger than 100 KB.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            message: request entity too large
+
+    UnsupportedMediaType:
+      description: The JSON body uses a non-UTF charset or an unsupported Content-Encoding.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            unsupportedCharset:
+              summary: Charset other than UTF-8/16/32
+              value:
+                message: unsupported charset "ISO-8859-1"
+            unsupportedEncoding:
+              summary: Unsupported Content-Encoding
+              value:
+                message: unsupported content encoding "compress"
+
+    InternalServerError:
+      description: |
+        Unexpected server error, such as the database being unavailable or the
+        token signing key not being configured.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            message: Internal server error!
+
+    RefreshInternalServerError:
+      description: |
+        Unexpected server error, such as the database being unavailable. Both
+        session cookies are cleared.
+      headers:
+        Set-Cookie:
+          description: |
+            Two cookies are cleared, one per `Set-Cookie` header: `accessToken`
+            and `refreshToken`, each with an empty value and an expiry date in
+            the past.
+          schema:
+            type: string
+          example: accessToken=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            message: Internal server error!
+
+    LogoutInternalServerError:
+      description: |
+        Unexpected server error, such as the database being unavailable. Both
+        session cookies are still cleared, but the stored session may not have
+        been deleted.
+      headers:
+        Set-Cookie:
+          description: |
+            Two cookies are cleared, one per `Set-Cookie` header: `accessToken`
+            and `refreshToken`, each with an empty value and an expiry date in
+            the past.
+          schema:
+            type: string
+          example: accessToken=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            message: Internal server error!
