@@ -50,7 +50,8 @@ export async function login(
 }
 
 export async function refresh(req: Request, res: Response) {
-  const refreshToken = req.cookies.refreshToken as string | undefined;
+  const raw = req.cookies.refreshToken;
+  const refreshToken = typeof raw === 'string' ? raw : undefined;
 
   try {
     const { newAccessToken, newRefreshToken } = await authService.refresh(refreshToken);
@@ -69,7 +70,9 @@ export async function refresh(req: Request, res: Response) {
 }
 
 export async function logout(req: Request, res: Response) {
-  const refreshToken = req.cookies.refreshToken;
+  const raw = req.cookies.refreshToken;
+  const refreshToken = typeof raw === 'string' ? raw : undefined;
+
   deleteJWTCookie(res, 'refreshToken');
   deleteJWTCookie(res, 'accessToken');
 
