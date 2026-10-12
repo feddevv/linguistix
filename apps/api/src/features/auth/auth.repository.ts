@@ -46,6 +46,10 @@ class RefreshToken {
 
     return toRefreshTokenDomain(refreshToken.rows[0]!);
   }
+
+  async deleteRefreshToken(refreshTokenHash: string) {
+    await pg.query(`DELETE FROM refresh_tokens WHERE refresh_token_hash = $1`, [refreshTokenHash]);
+  }
 }
 
 export const RefreshTokenRepo = new RefreshToken();

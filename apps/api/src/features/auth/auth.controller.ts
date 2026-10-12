@@ -68,4 +68,12 @@ export async function refresh(req: Request, res: Response) {
   }
 }
 
-export async function logout(req: Request, res: Response) {}
+export async function logout(req: Request, res: Response) {
+  const refreshToken = req.cookies.refreshToken;
+  deleteJWTCookie(res, 'refreshToken');
+  deleteJWTCookie(res, 'accessToken');
+
+  await authService.logout(refreshToken);
+
+  res.sendStatus(200);
+}

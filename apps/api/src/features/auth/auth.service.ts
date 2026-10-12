@@ -108,3 +108,10 @@ export async function refresh(refreshToken: string | undefined) {
 
   return { newAccessToken, newRefreshToken };
 }
+
+export async function logout(refreshToken: string | undefined) {
+  if (!refreshToken) return;
+
+  const hashedRefreshToken = hashString(refreshToken);
+  await RefreshTokenRepo.deleteRefreshToken(hashedRefreshToken);
+}
