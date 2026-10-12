@@ -67,3 +67,5 @@ export async function refresh(req: Request, res: Response) {
     throw err;
   }
 }
+
+export async function logout(req: Request, res: Response) {}
