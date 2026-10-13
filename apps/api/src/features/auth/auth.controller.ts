@@ -82,6 +82,8 @@ export async function logout(req: Request, res: Response) {
 }
 
 export async function googleCallback(req: Request, res: Response) {
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=493460302598-vfts1nfs6s7os5hjribf2fpb8hu7ra98.apps.googleusercontent.com&redirect_uri=http://localhost:3000/api/auth/google/callback&response_type=code&access_type=offline&scope=openid profile email&prompt=consent`;
+
   const { accessToken, refreshToken } = await authService.handleGoogleCallback(
     req.query.code as string,
   );

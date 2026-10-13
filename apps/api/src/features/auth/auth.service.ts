@@ -129,8 +129,8 @@ interface GoogleJWTPayload extends JwtPayload {
   family_name: string;
 }
 export async function handleGoogleCallback(code: string) {
-  const data = await getGoogleTokens(code);
-  const decodedJWTPayload = jwtDecode<GoogleJWTPayload>(data.id_token);
+  const googleTokens = await getGoogleTokens(code);
+  const decodedJWTPayload = jwtDecode<GoogleJWTPayload>(googleTokens.id_token);
   const dbUser = await UserRepo.findUserByGoogleId(decodedJWTPayload.sub!);
 
   const user = !dbUser
