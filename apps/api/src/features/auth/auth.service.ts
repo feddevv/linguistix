@@ -118,7 +118,15 @@ export async function logout(refreshToken: string | undefined) {
   await RefreshTokenRepo.deleteRefreshToken(hashedRefreshToken);
 }
 
-interface GoogleJWTPayload extends JwtPayload {}
+interface GoogleJWTPayload extends JwtPayload {
+  email: string;
+  email_verified: boolean;
+  at_hash: string;
+  name: string;
+  picture: string;
+  given_name: string;
+  family_name: string;
+}
 export async function handleGoogleCallback(code: string) {
   const response = await fetch(`https://oauth2.googleapis.com/token`, {
     method: 'POST',
@@ -134,7 +142,7 @@ export async function handleGoogleCallback(code: string) {
   if (!response.ok) throw new HttpError(500, 'Internal server error');
 
   const data = await response.json();
-  const decodedData = jwtDecode(data.id_token);
+  const decodedData = jwtDecode<GoogleJWTPayload>(data.id_token);
   const dbUser = await UserRepo.findUserByGoogleId(decodedData.sub!);
 
   const user = !dbUser
