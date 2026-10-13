@@ -119,5 +119,5 @@ export async function googleCallback(req: Request, res: Response) {
   setJWTCookie(res, 'accessToken', accessToken, ACCESS_TOKEN_EXPIRES_AT);
   setJWTCookie(res, 'refreshToken', refreshToken, REFRESH_TOKEN_EXPIRES_AT);
 
-  res.sendStatus(302);
+  res.redirect(process.env.FRONTEND_URL!);
 }
