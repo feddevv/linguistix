@@ -6,8 +6,19 @@ import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { hashString } from './utils/hashing.js';
 import { UserRepo } from '../user/user.repository.js';
 import { jwtDecode } from 'jwt-decode';
-import type { UserDomain } from '../user/user.types.js';
 import { getGoogleTokens } from '../google/google.service.js';
+
+function signTokens(payload: JwtPayload, secretKey = process.env.SECRET_KEY!) {
+  const accessToken = jwt.sign({ ...payload, jti: crypto.randomUUID() }, secretKey, {
+    expiresIn: '15m',
+  });
+
+  const refreshToken = jwt.sign({ jti: crypto.randomUUID() }, secretKey, {
+    expiresIn: '15d',
+  });
+
+  return { accessToken, refreshToken };
+}
 
 export async function register({ firstName, lastName, password, email, role }: RegisterInput) {
   const sha256hash = hashString(password);
@@ -34,21 +45,11 @@ export async function login({ email, password }: LoginInput) {
 
   if (!isMatch) throw new HttpError(401, 'Email or password is incorrect');
 
-  const accessToken = jwt.sign(
-    { id: user.id, email: user.email, role: user.role, jti: crypto.randomUUID() },
-    process.env.SECRET_KEY!,
-    {
-      expiresIn: '15m',
-    },
-  );
-
-  const refreshToken = jwt.sign(
-    { id: user.id, email: user.email, role: user.role, jti: crypto.randomUUID() },
-    process.env.SECRET_KEY!,
-    {
-      expiresIn: '15d',
-    },
-  );
+  const { accessToken, refreshToken } = signTokens({
+    id: user.id,
+    email: user.email,
+    role: user.role,
+  });
 
   const date = new Date();
   date.setDate(date.getDate() + 15);
@@ -85,16 +86,11 @@ export async function refresh(refreshToken: string | undefined) {
 
   if (!user) throw new HttpError(401, "Current user doesn't exist");
 
-  const newAccessToken = jwt.sign(
-    { id: user.id, email: user.email, role: user.role, jti: crypto.randomUUID() },
-    process.env.SECRET_KEY!,
-    { expiresIn: '15m' },
-  );
-  const newRefreshToken = jwt.sign(
-    { id: user.id, email: user.email, role: user.role, jti: crypto.randomUUID() },
-    process.env.SECRET_KEY!,
-    { expiresIn: '15d' },
-  );
+  const { accessToken: newAccessToken, refreshToken: newRefreshToken } = signTokens({
+    id: user.id,
+    email: user.email,
+    role: user.role,
+  });
 
   const hashedNewRefreshToken = hashString(newRefreshToken);
 
@@ -143,31 +139,11 @@ export async function handleGoogleCallback(code: string) {
       })
     : dbUser;
 
-  const accessToken = jwt.sign(
-    {
-      id: user.id,
-      email: user.email,
-      role: user.role,
-      jti: crypto.randomUUID(),
-    },
-    process.env.SECRET_KEY!,
-    {
-      expiresIn: '15m',
-    },
-  );
-
-  const refreshToken = jwt.sign(
-    {
-      id: user.id,
-      email: user.email,
-      role: user.role,
-      jti: crypto.randomUUID(),
-    },
-    process.env.SECRET_KEY!,
-    {
-      expiresIn: '15d',
-    },
-  );
+  const { accessToken, refreshToken } = signTokens({
+    id: user.id,
+    email: user.email,
+    role: user.role,
+  });
 
   const date = new Date();
   date.setDate(date.getDate() + 15);
