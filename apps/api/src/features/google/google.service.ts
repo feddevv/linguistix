@@ -20,7 +20,10 @@ export async function getGoogleTokens(code: string) {
     }),
   });
 
-  if (!response.ok) throw new HttpError(500, 'Internal server error');
+  if (!response.ok) {
+    const data = await response.json();
+    throw new HttpError(response.status, data.error_description);
+  }
 
   const data = (await response.json()) as GoogleTokenResponse;
 
