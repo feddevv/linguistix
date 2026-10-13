@@ -139,7 +139,7 @@ export async function handleGoogleCallback(code: string) {
         lastName: decodedJWTPayload.family_name,
         email: decodedJWTPayload.email,
         googleId: decodedJWTPayload.sub!,
-        role: 'student',
+        role: 'student', // Fix so that users who use OAuth2 don't have a role
       })
     : dbUser;
 
