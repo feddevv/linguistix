@@ -142,15 +142,15 @@ export async function handleGoogleCallback(code: string) {
   if (!response.ok) throw new HttpError(500, 'Internal server error');
 
   const data = await response.json();
-  const decodedData = jwtDecode<GoogleJWTPayload>(data.id_token);
-  const dbUser = await UserRepo.findUserByGoogleId(decodedData.sub!);
+  const decodedJWTPayload = jwtDecode<GoogleJWTPayload>(data.id_token);
+  const dbUser = await UserRepo.findUserByGoogleId(decodedJWTPayload.sub!);
 
   const user = !dbUser
     ? await UserRepo.createGoogleUser({
-        firstName: decodedData.given_name!,
-        lastName: decodedData.family_name!,
-        email: decodedData.email!,
-        googleId: decodedData.sub!,
+        firstName: decodedJWTPayload.given_name!,
+        lastName: decodedJWTPayload.family_name!,
+        email: decodedJWTPayload.email!,
+        googleId: decodedJWTPayload.sub!,
         role: 'student',
       })
     : dbUser;
