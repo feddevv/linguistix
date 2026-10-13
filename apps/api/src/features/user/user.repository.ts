@@ -99,6 +99,15 @@ class User {
 
     return Number(count.rows[0].count);
   }
+
+  async updateUserGoogleId(googleId: string, userId: string) {
+    const user = await pg.query(`UPDATE users SET google_id = $1 WHERE id = $2;`, [
+      googleId,
+      userId,
+    ]);
+
+    return user.rowCount;
+  }
 }
 
 export const UserRepo = new User();

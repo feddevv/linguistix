@@ -142,17 +142,22 @@ interface GoogleJWTPayload extends JwtPayload {
 export async function handleGoogleCallback(code: string) {
   const googleTokens = await getGoogleTokens(code);
   const decodedJWTPayload = jwtDecode<GoogleJWTPayload>(googleTokens.id_token);
-  const dbUser = await UserRepo.findUserByGoogleId(decodedJWTPayload.sub!);
+  if (!decodedJWTPayload.email_verified) throw new HttpError(403, 'Email should be verified');
 
-  const user = !dbUser
-    ? await UserRepo.createGoogleUser({
-        firstName: decodedJWTPayload.given_name,
-        lastName: decodedJWTPayload.family_name,
-        email: decodedJWTPayload.email,
-        googleId: decodedJWTPayload.sub!,
-        role: 'student', // Fix so that users who use OAuth2 don't have a role
-      })
-    : dbUser;
+  const dbUser = await UserRepo.findUserByEmail(decodedJWTPayload.email);
+  const user =
+    dbUser ??
+    (await UserRepo.createGoogleUser({
+      firstName: decodedJWTPayload.given_name,
+      lastName: decodedJWTPayload.family_name,
+      email: decodedJWTPayload.email,
+      googleId: decodedJWTPayload.sub!,
+      role: 'student', // Fix so that users who use OAuth2 don't have a role
+    }));
+
+  if (!user.googleId) {
+    await UserRepo.updateUserGoogleId(decodedJWTPayload.sub!, user.id);
+  }
 
   const { accessToken, refreshToken } = signTokens({
     id: user.id,
