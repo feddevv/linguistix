@@ -80,3 +80,14 @@ export async function logout(req: Request, res: Response) {
 
   res.sendStatus(200);
 }
+
+export async function googleCallback(req: Request, res: Response) {
+  const { accessToken, refreshToken } = await authService.handleGoogleCallback(
+    req.query.code as string,
+  );
+
+  setJWTCookie(res, 'accessToken', accessToken, ACCESS_TOKEN_EXPIRES_AT);
+  setJWTCookie(res, 'refreshToken', refreshToken, REFRESH_TOKEN_EXPIRES_AT);
+
+  res.sendStatus(302);
+}

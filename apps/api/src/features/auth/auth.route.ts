@@ -9,3 +9,4 @@ router.post('/auth/register', validate({ body: registerSchema }), authController
 router.post('/auth/login', validate({ body: loginSchema }), authController.login);
 router.post('/auth/refresh', authController.refresh);
 router.post('/auth/logout', authController.logout);
+router.get('/auth/google/callback', authController.googleCallback);

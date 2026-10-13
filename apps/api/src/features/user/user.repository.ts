@@ -1,4 +1,4 @@
-import type { RegisterInput } from '@repo/shared';
+import type { RegisterInput, Role } from '@repo/shared';
 import { pg } from '../../db/pg.js';
 import { toUserDomain } from '../../utils/mappers.js';
 import { DatabaseError } from 'pg';
@@ -21,6 +21,41 @@ class User {
         RETURNING *;
 			`,
         [firstName, lastName, password, email, role],
+      );
+
+      return toUserDomain(user.rows[0]!);
+    } catch (err) {
+      if (err instanceof DatabaseError) {
+        if (err.code === '23505') {
+          throw new HttpError(409, 'User with this email already exists');
+        }
+      }
+
+      throw err;
+    }
+  }
+
+  async createGoogleUser({
+    firstName,
+    lastName,
+    email,
+    googleId,
+    role,
+  }: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    googleId: string;
+    role: Role;
+  }) {
+    try {
+      const user = await pg.query<UserRow>(
+        `
+				INSERT INTO users (first_name, last_name, email, google_id, role)
+				VALUES ($1, $2, $3, $4, $5)
+        RETURNING *;
+			`,
+        [firstName, lastName, email, googleId, role],
       );
 
       return toUserDomain(user.rows[0]!);

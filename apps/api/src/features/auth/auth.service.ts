@@ -2,9 +2,11 @@ import { RefreshTokenRepo } from './auth.repository.js';
 import type { LoginInput, RegisterInput } from '@repo/shared';
 import { compare, hash } from 'bcrypt';
 import { HttpError } from '../../errors/HttpError.js';
-import jwt from 'jsonwebtoken';
+import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { hashString } from './utils/hashing.js';
 import { UserRepo } from '../user/user.repository.js';
+import { jwtDecode } from 'jwt-decode';
+import type { UserDomain } from '../user/user.types.js';
 
 export async function register({ firstName, lastName, password, email, role }: RegisterInput) {
   const sha256hash = hashString(password);
@@ -114,4 +116,73 @@ export async function logout(refreshToken: string | undefined) {
 
   const hashedRefreshToken = hashString(refreshToken);
   await RefreshTokenRepo.deleteRefreshToken(hashedRefreshToken);
+}
+
+interface GoogleJWTPayload extends JwtPayload {}
+export async function handleGoogleCallback(code: string) {
+  const response = await fetch(`https://oauth2.googleapis.com/token`, {
+    method: 'POST',
+    body: new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: 'http://localhost:3000/api/auth/google/callback',
+      client_id: process.env.CLIENT_ID!,
+      client_secret: process.env.CLIENT_SECRET!,
+    }),
+  });
+
+  if (!response.ok) throw new HttpError(500, 'Internal server error');
+
+  const data = await response.json();
+  const decodedData = jwtDecode(data.id_token);
+  const dbUser = await UserRepo.findUserByGoogleId(decodedData.sub!);
+
+  const user = !dbUser
+    ? await UserRepo.createGoogleUser({
+        firstName: decodedData.given_name!,
+        lastName: decodedData.family_name!,
+        email: decodedData.email!,
+        googleId: decodedData.sub!,
+        role: 'student',
+      })
+    : dbUser;
+
+  const accessToken = jwt.sign(
+    {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      jti: crypto.randomUUID(),
+    },
+    process.env.SECRET_KEY!,
+    {
+      expiresIn: '15m',
+    },
+  );
+
+  const refreshToken = jwt.sign(
+    {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      jti: crypto.randomUUID(),
+    },
+    process.env.SECRET_KEY!,
+    {
+      expiresIn: '15d',
+    },
+  );
+
+  const date = new Date();
+  date.setDate(date.getDate() + 15);
+  await RefreshTokenRepo.createRefreshToken({
+    refreshTokenHash: hashString(refreshToken),
+    userId: user.id,
+    expiresAt: date,
+  });
+
+  return {
+    accessToken,
+    refreshToken,
+  };
 }
