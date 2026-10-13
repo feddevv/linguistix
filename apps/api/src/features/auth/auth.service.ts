@@ -7,6 +7,7 @@ import { hashString } from './utils/hashing.js';
 import { UserRepo } from '../user/user.repository.js';
 import { jwtDecode } from 'jwt-decode';
 import type { UserDomain } from '../user/user.types.js';
+import { getGoogleTokens } from '../google/google.service.js';
 
 export async function register({ firstName, lastName, password, email, role }: RegisterInput) {
   const sha256hash = hashString(password);
@@ -128,28 +129,15 @@ interface GoogleJWTPayload extends JwtPayload {
   family_name: string;
 }
 export async function handleGoogleCallback(code: string) {
-  const response = await fetch(`https://oauth2.googleapis.com/token`, {
-    method: 'POST',
-    body: new URLSearchParams({
-      grant_type: 'authorization_code',
-      code,
-      redirect_uri: 'http://localhost:3000/api/auth/google/callback',
-      client_id: process.env.CLIENT_ID!,
-      client_secret: process.env.CLIENT_SECRET!,
-    }),
-  });
-
-  if (!response.ok) throw new HttpError(500, 'Internal server error');
-
-  const data = await response.json();
+  const data = await getGoogleTokens(code);
   const decodedJWTPayload = jwtDecode<GoogleJWTPayload>(data.id_token);
   const dbUser = await UserRepo.findUserByGoogleId(decodedJWTPayload.sub!);
 
   const user = !dbUser
     ? await UserRepo.createGoogleUser({
-        firstName: decodedJWTPayload.given_name!,
-        lastName: decodedJWTPayload.family_name!,
-        email: decodedJWTPayload.email!,
+        firstName: decodedJWTPayload.given_name,
+        lastName: decodedJWTPayload.family_name,
+        email: decodedJWTPayload.email,
         googleId: decodedJWTPayload.sub!,
         role: 'student',
       })
