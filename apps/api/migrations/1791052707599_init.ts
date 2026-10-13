@@ -9,10 +9,11 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
 
       CREATE TABLE IF NOT EXISTS "users" (
         id UUID PRIMARY KEY DEFAULT uuidv7(),
+        google_id TEXT UNIQUE,
         first_name VARCHAR(100) NOT NULL,
         last_name VARCHAR(100) NOT NULL,
         email VARCHAR(255) NOT NULL UNIQUE,
-        password VARCHAR(255) NOT NULL,
+        password VARCHAR(255),
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_DATE,
         role user_role NOT NULL
       );
