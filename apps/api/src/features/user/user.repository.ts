@@ -51,6 +51,14 @@ class User {
     return toUserDomain(user.rows[0]);
   }
 
+  async findUserByGoogleId(googleId: string) {
+    const user = await pg.query<UserRow>(`SELECT * FROM users WHERE google_id = $1`, [googleId]);
+
+    if (!user.rows[0]) return null;
+
+    return toUserDomain(user.rows[0]);
+  }
+
   async countUsers() {
     const count = await pg.query(`SELECT COUNT(*) FROM users;`);
 
