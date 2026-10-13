@@ -82,8 +82,35 @@ export async function logout(req: Request, res: Response) {
   res.sendStatus(200);
 }
 
+export async function google(req: Request, res: Response) {
+  const { googleAuthUrl, state } = authService.google();
+
+  res.cookie('google-oauth-state', state, {
+    httpOnly: true,
+    maxAge: 10 * 60 * 1000,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+  });
+
+  res.redirect(googleAuthUrl);
+}
+
 export async function googleCallback(req: Request, res: Response) {
   if (!req.query.code) throw new HttpError(400, 'User canceled authorization');
+
+  const state = req.cookies['google-oauth-state'] as string | undefined;
+  const queryState = req.query.state;
+
+  if (!state || !queryState || state !== queryState) {
+    throw new HttpError(403, 'Invalid state parameter. Possible CSRF attack.');
+  }
+
+  res.clearCookie('google-oauth-state', {
+    httpOnly: true,
+    maxAge: 10 * 60 * 1000,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+  });
 
   const { accessToken, refreshToken } = await authService.handleGoogleCallback(
     req.query.code as string,
