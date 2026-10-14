@@ -149,8 +149,8 @@ export async function handleGoogleCallback(code: string) {
   const user =
     dbUser ??
     (await UserRepo.createGoogleUser({
-      firstName: decodedJWTPayload.given_name,
-      lastName: decodedJWTPayload.family_name,
+      firstName: decodedJWTPayload.given_name ?? decodedJWTPayload.name,
+      lastName: decodedJWTPayload.family_name ?? '',
       email: decodedJWTPayload.email,
       googleId: decodedJWTPayload.sub!,
       role: 'student', // Fix so that users who use OAuth2 don't have a role
