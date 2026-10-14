@@ -8,6 +8,7 @@ import { UserRepo } from '../user/user.repository.js';
 import { jwtDecode } from 'jwt-decode';
 import { getGoogleTokens } from '../google/google.service.js';
 import crypto from 'crypto';
+import type { UserDomain } from '../user/user.types.js';
 
 function issueSession(user: JwtPayload, secretKey = process.env.SECRET_KEY!) {
   const accessToken = jwt.sign({ ...user, jti: crypto.randomUUID() }, secretKey, {
@@ -146,19 +147,24 @@ export async function handleGoogleCallback(code: string) {
   const decodedJWTPayload = jwtDecode<GoogleJWTPayload>(googleTokens.id_token);
   if (!decodedJWTPayload.email_verified) throw new HttpError(403, 'Email should be verified');
 
-  const dbUser = await UserRepo.findUserByEmail(decodedJWTPayload.email);
-  const user =
-    dbUser ??
-    (await UserRepo.createGoogleUser({
+  const userByGoogleId = await UserRepo.findUserByGoogleId(decodedJWTPayload.sub!);
+  const userByEmail = await UserRepo.findUserByEmail(decodedJWTPayload.email);
+  let user = userByGoogleId ?? userByEmail;
+
+  if (!user) {
+    user = await UserRepo.createGoogleUser({
+      email: decodedJWTPayload.email,
       firstName: decodedJWTPayload.given_name ?? decodedJWTPayload.name,
       lastName: decodedJWTPayload.family_name ?? '',
-      email: decodedJWTPayload.email,
       googleId: decodedJWTPayload.sub!,
-      role: 'student', // Fix so that users who use OAuth2 don't have a role
-    }));
-
-  if (!user.googleId) {
+      role: 'student',
+    });
+  } else if (!user.googleId) {
     await UserRepo.updateUserGoogleId(decodedJWTPayload.sub!, user.id);
+  }
+
+  if (user.googleId === decodedJWTPayload.sub! && user.email !== decodedJWTPayload.email) {
+    await UserRepo.updateUserEmail(decodedJWTPayload.email, user.id);
   }
 
   const { accessToken, refreshToken, hashedRefreshToken, date } = issueSession({

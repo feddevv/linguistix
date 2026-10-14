@@ -111,6 +111,12 @@ class User {
 
     return user.rowCount;
   }
+
+  async updateUserEmail(newEmail: string, userId: string) {
+    const user = await pg.query(`UPDATE users SET email = $1 WHERE id = $2;`, [newEmail, userId]);
+
+    return user.rowCount;
+  }
 }
 
 export const UserRepo = new User();
