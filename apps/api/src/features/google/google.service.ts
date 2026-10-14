@@ -16,6 +16,7 @@ interface GoogleTokenError {
 
 export async function getGoogleTokens(code: string) {
   const response = await fetch(`https://oauth2.googleapis.com/token`, {
+    signal: AbortSignal.timeout(10000),
     method: 'POST',
     body: new URLSearchParams({
       grant_type: 'authorization_code',
