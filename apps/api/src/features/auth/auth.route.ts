@@ -2,6 +2,7 @@ import { Router } from 'express';
 import * as authController from './auth.controller.js';
 import { validate } from '../../middlewares/validator.js';
 import { loginSchema, registerSchema } from '@repo/shared';
+import { oauthSchema } from './auth.schemas.js';
 
 export const router: Router = Router();
 
