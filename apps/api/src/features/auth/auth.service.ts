@@ -9,8 +9,8 @@ import { jwtDecode } from 'jwt-decode';
 import { getGoogleTokens } from '../google/google.service.js';
 import crypto from 'crypto';
 
-function signTokens(payload: JwtPayload, secretKey = process.env.SECRET_KEY!) {
-  const accessToken = jwt.sign({ ...payload, jti: crypto.randomUUID() }, secretKey, {
+function issueSession(user: JwtPayload, secretKey = process.env.SECRET_KEY!) {
+  const accessToken = jwt.sign({ ...user, jti: crypto.randomUUID() }, secretKey, {
     expiresIn: '15m',
   });
 
@@ -18,7 +18,12 @@ function signTokens(payload: JwtPayload, secretKey = process.env.SECRET_KEY!) {
     expiresIn: '15d',
   });
 
-  return { accessToken, refreshToken };
+  const hashedRefreshToken = hashString(refreshToken);
+
+  const date = new Date();
+  date.setDate(date.getDate() + 15);
+
+  return { accessToken, refreshToken, hashedRefreshToken, date };
 }
 
 export async function register({ firstName, lastName, password, email, role }: RegisterInput) {
@@ -47,16 +52,12 @@ export async function login({ email, password }: LoginInput) {
 
   if (!isMatch) throw new HttpError(401, 'Email or password is incorrect');
 
-  const { accessToken, refreshToken } = signTokens({
+  const { accessToken, refreshToken, hashedRefreshToken, date } = issueSession({
     id: user.id,
     email: user.email,
     role: user.role,
   });
 
-  const date = new Date();
-  date.setDate(date.getDate() + 15);
-
-  const hashedRefreshToken = hashString(refreshToken);
   await RefreshTokenRepo.createRefreshToken({
     refreshTokenHash: hashedRefreshToken,
     userId: user.id,
@@ -88,16 +89,16 @@ export async function refresh(refreshToken: string | undefined) {
 
   if (!user) throw new HttpError(401, "Current user doesn't exist");
 
-  const { accessToken: newAccessToken, refreshToken: newRefreshToken } = signTokens({
+  const {
+    accessToken: newAccessToken,
+    refreshToken: newRefreshToken,
+    hashedRefreshToken: hashedNewRefreshToken,
+    date: newExpiresAt,
+  } = issueSession({
     id: user.id,
     email: user.email,
     role: user.role,
   });
-
-  const hashedNewRefreshToken = hashString(newRefreshToken);
-
-  const newExpiresAt = new Date();
-  newExpiresAt.setDate(newExpiresAt.getDate() + 15);
 
   const updated = await RefreshTokenRepo.updateRefreshToken(
     hashedRefreshToken,
@@ -160,16 +161,14 @@ export async function handleGoogleCallback(code: string) {
     await UserRepo.updateUserGoogleId(decodedJWTPayload.sub!, user.id);
   }
 
-  const { accessToken, refreshToken } = signTokens({
+  const { accessToken, refreshToken, hashedRefreshToken, date } = issueSession({
     id: user.id,
     email: user.email,
     role: user.role,
   });
 
-  const date = new Date();
-  date.setDate(date.getDate() + 15);
   await RefreshTokenRepo.createRefreshToken({
-    refreshTokenHash: hashString(refreshToken),
+    refreshTokenHash: hashedRefreshToken,
     userId: user.id,
     expiresAt: date,
   });
