@@ -8,6 +8,7 @@ import type {
 import * as authService from './auth.service.js';
 import { deleteJWTCookie, setJWTCookie } from './utils/cookies.js';
 import { HttpError } from '../../errors/HttpError.js';
+import { UserRepo } from '../user/user.repository.js';
 
 const ACCESS_TOKEN_EXPIRES_AT = 15 * 60 * 1000;
 const REFRESH_TOKEN_EXPIRES_AT = 15 * 24 * 60 * 60 * 1000;

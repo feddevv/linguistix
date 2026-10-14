@@ -62,7 +62,10 @@ class User {
     } catch (err) {
       if (err instanceof DatabaseError) {
         if (err.code === '23505') {
-          throw new HttpError(409, 'User with this email already exists');
+          if (err.constraint === 'users_google_id_key')
+            throw new HttpError(409, 'User with this google_id already exists');
+          else if (err.constraint === 'users_email_key')
+            throw new HttpError(409, 'User with this email already exists');
         }
       }
 
