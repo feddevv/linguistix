@@ -8,6 +8,12 @@ interface GoogleTokenResponse {
   token_type: string;
   id_token: string;
 }
+
+interface GoogleTokenError {
+  error: string;
+  error_description: string;
+}
+
 export async function getGoogleTokens(code: string) {
   const response = await fetch(`https://oauth2.googleapis.com/token`, {
     method: 'POST',
@@ -20,12 +26,16 @@ export async function getGoogleTokens(code: string) {
     }),
   });
 
+  const data = (await response.json()) as GoogleTokenResponse | GoogleTokenError;
+
   if (!response.ok) {
-    const data = await response.json();
-    throw new HttpError(response.status, data.error_description);
+    if ('error' in data && data.error === 'invalid_grant') {
+      throw new HttpError(400, data.error_description);
+    } else {
+      console.error(data, response);
+      throw new HttpError(502, 'Authorization error');
+    }
   }
 
-  const data = (await response.json()) as GoogleTokenResponse;
-
-  return data;
+  return data as GoogleTokenResponse;
 }
