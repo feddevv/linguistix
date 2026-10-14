@@ -42,6 +42,7 @@ export async function login({ email, password }: LoginInput) {
   if (!user) throw new HttpError(401, 'Email or password is incorrect');
 
   const sha256hash = hashString(password);
+  if (!user.password) throw new HttpError(401, 'Email or passwords is incorrect');
   const isMatch = await compare(sha256hash, user.password);
 
   if (!isMatch) throw new HttpError(401, 'Email or password is incorrect');
