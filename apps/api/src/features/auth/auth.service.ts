@@ -122,7 +122,7 @@ export function google() {
 
   const googleAuthUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   googleAuthUrl.searchParams.append('response_type', 'code');
-  googleAuthUrl.searchParams.append('client_id', process.env.CLIENT_ID!);
+  googleAuthUrl.searchParams.append('client_id', process.env.GOOGLE_CLIENT_ID!);
   googleAuthUrl.searchParams.append('redirect_uri', process.env.GOOGLE_REDIRECT_URI!);
   googleAuthUrl.searchParams.append('scope', 'openid email profile');
   googleAuthUrl.searchParams.append('state', state);
