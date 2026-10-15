@@ -136,15 +136,14 @@ describe('GET /api/auth/google/callback', () => {
       expect(await UserRepo.countUsers()).toBe(1);
     });
 
-    it('links Google to an existing email/password account with the same email', async () => {
+    it("does't link Google to an existing email/password account with the same email", async () => {
       const existing = await seedUser({ password: 'bcrypt-hash' });
       mockGoogleProfile();
 
       const res = await callback({ code: CODE, state: STATE }).expect(302);
 
-      expect(await expectSessionIssued(res)).toBe(existing.id);
       expect(await UserRepo.countUsers()).toBe(1);
-      expect((await UserRepo.findUserById(existing.id))!.googleId).toBe(googleProfile.sub);
+      expect((await UserRepo.findUserById(existing.id))!.googleId).toBe(null);
     });
 
     it('updates the stored email when the Google account email changed', async () => {
