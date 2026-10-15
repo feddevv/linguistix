@@ -8,7 +8,6 @@ import { UserRepo } from '../user/user.repository.js';
 import { jwtDecode } from 'jwt-decode';
 import { getGoogleTokens } from '../google/google.service.js';
 import crypto from 'crypto';
-import type { UserDomain } from '../user/user.types.js';
 
 function issueSession(user: JwtPayload, secretKey = process.env.SECRET_KEY!) {
   const accessToken = jwt.sign({ ...user, jti: crypto.randomUUID() }, secretKey, {
@@ -31,7 +30,7 @@ export async function register({ firstName, lastName, password, email, role }: R
   const sha256hash = hashString(password);
   const passwordHash = await hash(sha256hash, 10);
 
-  const user = await UserRepo.createUser({
+  const user = await UserRepo.create({
     firstName,
     lastName,
     password: passwordHash,
@@ -152,7 +151,7 @@ export async function handleGoogleCallback(code: string) {
   let user = userByGoogleId ?? userByEmail;
 
   if (!user) {
-    user = await UserRepo.createGoogleUser({
+    user = await UserRepo.create({
       email: decodedJWTPayload.email,
       firstName: decodedJWTPayload.given_name ?? decodedJWTPayload.name,
       lastName: decodedJWTPayload.family_name ?? '',
