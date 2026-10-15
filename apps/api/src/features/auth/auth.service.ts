@@ -156,7 +156,7 @@ export async function handleGoogleCallback(code: string) {
       firstName: decodedJWTPayload.given_name ?? decodedJWTPayload.name,
       lastName: decodedJWTPayload.family_name ?? '',
       googleId: decodedJWTPayload.sub!,
-      role: 'student',
+      role: null,
     });
   } else if (!user.googleId) {
     await UserRepo.updateUserGoogleId(decodedJWTPayload.sub!, user.id);

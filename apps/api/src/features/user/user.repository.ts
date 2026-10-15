@@ -1,4 +1,4 @@
-import type { RegisterInput, Role } from '@repo/shared';
+import type { Role } from '@repo/shared';
 import { pg } from '../../db/pg.js';
 import { toUserDomain } from '../../utils/mappers.js';
 import { DatabaseError } from 'pg';
@@ -11,7 +11,7 @@ interface CreateUserParameters {
   lastName: string;
   password?: string;
   email: string;
-  role: Role;
+  role: Role | null;
 }
 
 class User {
@@ -24,7 +24,7 @@ class User {
         ON CONFLICT (google_id) DO UPDATE SET email = EXCLUDED.email
         RETURNING *;
 			`,
-        [googleId ?? null, firstName, lastName, password ?? null, email, role],
+        [googleId ?? null, firstName, lastName, password ?? null, email, role ?? null],
       );
 
       return toUserDomain(user.rows[0]!);

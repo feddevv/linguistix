@@ -8,7 +8,7 @@ export interface UserRow {
   email: string;
   password: string | null;
   created_at: Date;
-  role: Role;
+  role: Role | null;
 }
 
 export interface UserDomain {
@@ -19,5 +19,5 @@ export interface UserDomain {
   email: string;
   password: string | null;
   createdAt: Date;
-  role: Role;
+  role: Role | null;
 }
