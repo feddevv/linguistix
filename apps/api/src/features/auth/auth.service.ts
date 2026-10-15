@@ -150,10 +150,6 @@ export async function handleGoogleCallback(code: string) {
   const userByEmail = await UserRepo.findUserByEmail(decodedJWTPayload.email);
   let user = userByGoogleId ?? userByEmail;
 
-  if (user && user.googleId && user.googleId !== decodedJWTPayload.sub!) {
-    throw new HttpError(403, 'This email is already linked');
-  }
-
   if (!user) {
     user = await UserRepo.create({
       email: decodedJWTPayload.email,
@@ -162,11 +158,19 @@ export async function handleGoogleCallback(code: string) {
       googleId: decodedJWTPayload.sub!,
       role: null,
     });
-  } else if (!user.googleId) {
-    await UserRepo.updateUserGoogleId(decodedJWTPayload.sub!, user.id);
+  } else if (!user.googleId || user.googleId !== decodedJWTPayload.sub!) {
+    throw new HttpError(
+      401,
+      'An account with this email already exists. Please sign in with your email and password.',
+    );
   }
 
   if (user.googleId === decodedJWTPayload.sub! && user.email !== decodedJWTPayload.email) {
+    const existingUser = await UserRepo.findUserByEmail(decodedJWTPayload.email);
+
+    if (existingUser) {
+      throw new HttpError(401, 'This Google email is already used by another account');
+    }
     await UserRepo.updateUserEmail(decodedJWTPayload.email, user.id);
   }
 
