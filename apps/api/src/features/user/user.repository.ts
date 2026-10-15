@@ -1,26 +1,30 @@
-import type { RegisterInput } from '@repo/shared';
+import type { Role } from '@repo/shared';
 import { pg } from '../../db/pg.js';
 import { toUserDomain } from '../../utils/mappers.js';
 import { DatabaseError } from 'pg';
 import { HttpError } from '../../errors/HttpError.js';
 import type { UserRow } from './user.types.js';
 
+interface CreateUserParameters {
+  googleId?: string;
+  firstName: string;
+  lastName: string;
+  password?: string;
+  email: string;
+  role: Role | null;
+}
+
 class User {
-  async createUser({
-    firstName,
-    lastName,
-    email,
-    password,
-    role,
-  }: Omit<RegisterInput, 'confirmPassword'>) {
+  async create({ googleId, firstName, lastName, email, password, role }: CreateUserParameters) {
     try {
       const user = await pg.query<UserRow>(
         `
-				INSERT INTO users (first_name, last_name, password, email, role)
-				VALUES ($1, $2, $3, $4, $5)
+				INSERT INTO users (google_id, first_name, last_name, password, email, role)
+				VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (google_id) DO UPDATE SET email = EXCLUDED.email
         RETURNING *;
 			`,
-        [firstName, lastName, password, email, role],
+        [googleId ?? null, firstName, lastName, password ?? null, email, role ?? null],
       );
 
       return toUserDomain(user.rows[0]!);
@@ -51,10 +55,33 @@ class User {
     return toUserDomain(user.rows[0]);
   }
 
+  async findUserByGoogleId(googleId: string) {
+    const user = await pg.query<UserRow>(`SELECT * FROM users WHERE google_id = $1`, [googleId]);
+
+    if (!user.rows[0]) return null;
+
+    return toUserDomain(user.rows[0]);
+  }
+
   async countUsers() {
     const count = await pg.query(`SELECT COUNT(*) FROM users;`);
 
     return Number(count.rows[0].count);
+  }
+
+  async updateUserGoogleId(googleId: string, userId: string) {
+    const user = await pg.query(`UPDATE users SET google_id = $1 WHERE id = $2;`, [
+      googleId,
+      userId,
+    ]);
+
+    return user.rowCount;
+  }
+
+  async updateUserEmail(newEmail: string, userId: string) {
+    const user = await pg.query(`UPDATE users SET email = $1 WHERE id = $2;`, [newEmail, userId]);
+
+    return user.rowCount;
   }
 }
 

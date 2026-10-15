@@ -10,7 +10,7 @@ export interface RegisterResponseDTO {
     firstName: string;
     lastName: string;
     email: string;
-    role: Role;
+    role: Role | null;
   };
 }
 
@@ -21,6 +21,6 @@ export interface LoginResponseDTO {
     firstName: string;
     lastName: string;
     email: string;
-    role: Role;
+    role: Role | null;
   };
 }

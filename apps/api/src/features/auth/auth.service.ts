@@ -2,15 +2,35 @@ import { RefreshTokenRepo } from './auth.repository.js';
 import type { LoginInput, RegisterInput } from '@repo/shared';
 import { compare, hash } from 'bcrypt';
 import { HttpError } from '../../errors/HttpError.js';
-import jwt from 'jsonwebtoken';
+import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { hashString } from './utils/hashing.js';
 import { UserRepo } from '../user/user.repository.js';
+import { jwtDecode } from 'jwt-decode';
+import { getGoogleTokens } from '../google/google.service.js';
+import crypto from 'crypto';
+
+function issueSession(user: JwtPayload, secretKey = process.env.SECRET_KEY!) {
+  const accessToken = jwt.sign({ ...user, jti: crypto.randomUUID() }, secretKey, {
+    expiresIn: '15m',
+  });
+
+  const refreshToken = jwt.sign({ jti: crypto.randomUUID() }, secretKey, {
+    expiresIn: '15d',
+  });
+
+  const hashedRefreshToken = hashString(refreshToken);
+
+  const date = new Date();
+  date.setDate(date.getDate() + 15);
+
+  return { accessToken, refreshToken, hashedRefreshToken, date };
+}
 
 export async function register({ firstName, lastName, password, email, role }: RegisterInput) {
   const sha256hash = hashString(password);
   const passwordHash = await hash(sha256hash, 10);
 
-  const user = await UserRepo.createUser({
+  const user = await UserRepo.create({
     firstName,
     lastName,
     password: passwordHash,
@@ -27,30 +47,17 @@ export async function login({ email, password }: LoginInput) {
   if (!user) throw new HttpError(401, 'Email or password is incorrect');
 
   const sha256hash = hashString(password);
+  if (!user.password) throw new HttpError(401, 'Email or passwords is incorrect');
   const isMatch = await compare(sha256hash, user.password);
 
   if (!isMatch) throw new HttpError(401, 'Email or password is incorrect');
 
-  const accessToken = jwt.sign(
-    { id: user.id, email: user.email, role: user.role, jti: crypto.randomUUID() },
-    process.env.SECRET_KEY!,
-    {
-      expiresIn: '15m',
-    },
-  );
+  const { accessToken, refreshToken, hashedRefreshToken, date } = issueSession({
+    id: user.id,
+    email: user.email,
+    role: user.role,
+  });
 
-  const refreshToken = jwt.sign(
-    { id: user.id, email: user.email, role: user.role, jti: crypto.randomUUID() },
-    process.env.SECRET_KEY!,
-    {
-      expiresIn: '15d',
-    },
-  );
-
-  const date = new Date();
-  date.setDate(date.getDate() + 15);
-
-  const hashedRefreshToken = hashString(refreshToken);
   await RefreshTokenRepo.createRefreshToken({
     refreshTokenHash: hashedRefreshToken,
     userId: user.id,
@@ -82,21 +89,16 @@ export async function refresh(refreshToken: string | undefined) {
 
   if (!user) throw new HttpError(401, "Current user doesn't exist");
 
-  const newAccessToken = jwt.sign(
-    { id: user.id, email: user.email, role: user.role, jti: crypto.randomUUID() },
-    process.env.SECRET_KEY!,
-    { expiresIn: '15m' },
-  );
-  const newRefreshToken = jwt.sign(
-    { id: user.id, email: user.email, role: user.role, jti: crypto.randomUUID() },
-    process.env.SECRET_KEY!,
-    { expiresIn: '15d' },
-  );
-
-  const hashedNewRefreshToken = hashString(newRefreshToken);
-
-  const newExpiresAt = new Date();
-  newExpiresAt.setDate(newExpiresAt.getDate() + 15);
+  const {
+    accessToken: newAccessToken,
+    refreshToken: newRefreshToken,
+    hashedRefreshToken: hashedNewRefreshToken,
+    date: newExpiresAt,
+  } = issueSession({
+    id: user.id,
+    email: user.email,
+    role: user.role,
+  });
 
   const updated = await RefreshTokenRepo.updateRefreshToken(
     hashedRefreshToken,
@@ -114,4 +116,78 @@ export async function logout(refreshToken: string | undefined) {
 
   const hashedRefreshToken = hashString(refreshToken);
   await RefreshTokenRepo.deleteRefreshToken(hashedRefreshToken);
+}
+
+export function google() {
+  const state = crypto.randomBytes(32).toString('hex');
+
+  const googleAuthUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+  googleAuthUrl.searchParams.append('response_type', 'code');
+  googleAuthUrl.searchParams.append('client_id', process.env.GOOGLE_CLIENT_ID!);
+  googleAuthUrl.searchParams.append('redirect_uri', process.env.GOOGLE_REDIRECT_URI!);
+  googleAuthUrl.searchParams.append('scope', 'openid email profile');
+  googleAuthUrl.searchParams.append('state', state);
+  googleAuthUrl.searchParams.append('prompt', 'consent');
+
+  return { state, googleAuthUrl: googleAuthUrl.toString() };
+}
+
+interface GoogleJWTPayload extends JwtPayload {
+  email: string;
+  email_verified: boolean;
+  at_hash: string;
+  name: string;
+  picture: string;
+  given_name: string;
+  family_name: string;
+}
+export async function handleGoogleCallback(code: string) {
+  const googleTokens = await getGoogleTokens(code);
+  const decodedJWTPayload = jwtDecode<GoogleJWTPayload>(googleTokens.id_token);
+  if (!decodedJWTPayload.email_verified) throw new HttpError(403, 'Email should be verified');
+
+  const userByGoogleId = await UserRepo.findUserByGoogleId(decodedJWTPayload.sub!);
+  const userByEmail = await UserRepo.findUserByEmail(decodedJWTPayload.email);
+  let user = userByGoogleId ?? userByEmail;
+
+  if (!user) {
+    user = await UserRepo.create({
+      email: decodedJWTPayload.email,
+      firstName: decodedJWTPayload.given_name ?? decodedJWTPayload.name,
+      lastName: decodedJWTPayload.family_name ?? '',
+      googleId: decodedJWTPayload.sub!,
+      role: null,
+    });
+  } else if (!user.googleId || user.googleId !== decodedJWTPayload.sub!) {
+    throw new HttpError(
+      401,
+      'An account with this email already exists. Please sign in with your email and password.',
+    );
+  }
+
+  if (user.googleId === decodedJWTPayload.sub! && user.email !== decodedJWTPayload.email) {
+    const existingUser = await UserRepo.findUserByEmail(decodedJWTPayload.email);
+
+    if (existingUser) {
+      throw new HttpError(401, 'This Google email is already used by another account');
+    }
+    await UserRepo.updateUserEmail(decodedJWTPayload.email, user.id);
+  }
+
+  const { accessToken, refreshToken, hashedRefreshToken, date } = issueSession({
+    id: user.id,
+    email: user.email,
+    role: user.role,
+  });
+
+  await RefreshTokenRepo.createRefreshToken({
+    refreshTokenHash: hashedRefreshToken,
+    userId: user.id,
+    expiresAt: date,
+  });
+
+  return {
+    accessToken,
+    refreshToken,
+  };
 }

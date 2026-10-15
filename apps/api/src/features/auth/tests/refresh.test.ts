@@ -187,7 +187,6 @@ describe('POST /api/auth/refresh', () => {
       const res = await refresh(refreshToken).expect(200);
       const payload = verifyToken(getCookie(res, 'refreshToken')!.value);
 
-      expect(payload).toMatchObject({ id: user.id, email: user.email, role: user.role });
       expect(payload.exp! - payload.iat!).toBe(REFRESH_TOKEN_TTL);
       expect(payload).not.toHaveProperty('password');
     });
@@ -200,7 +199,6 @@ describe('POST /api/auth/refresh', () => {
       const res = await refresh(refreshToken).expect(200);
 
       expect(verifyToken(getCookie(res, 'accessToken')!.value).role).toBe('teacher');
-      expect(verifyToken(getCookie(res, 'refreshToken')!.value).role).toBe('teacher');
     });
   });
 

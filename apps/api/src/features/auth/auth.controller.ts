@@ -7,6 +7,9 @@ import type {
 } from '@repo/shared';
 import * as authService from './auth.service.js';
 import { deleteJWTCookie, setJWTCookie } from './utils/cookies.js';
+import { HttpError } from '../../errors/HttpError.js';
+import { UserRepo } from '../user/user.repository.js';
+import type { OAuthQueryString } from './auth.schemas.js';
 
 const ACCESS_TOKEN_EXPIRES_AT = 15 * 60 * 1000;
 const REFRESH_TOKEN_EXPIRES_AT = 15 * 24 * 60 * 60 * 1000;
@@ -79,4 +82,53 @@ export async function logout(req: Request, res: Response) {
   await authService.logout(refreshToken);
 
   res.sendStatus(200);
+}
+
+export async function google(req: Request, res: Response) {
+  const { googleAuthUrl, state } = authService.google();
+
+  res.cookie('google-oauth-state', state, {
+    httpOnly: true,
+    maxAge: 10 * 60 * 1000,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+  });
+
+  res.redirect(googleAuthUrl);
+}
+
+export async function googleCallback(
+  req: Request<unknown, unknown, unknown, OAuthQueryString>,
+  res: Response,
+) {
+  const { code, state: queryState, error } = req.validatedQuery!;
+  if (error) {
+    if (error === 'access_denied') {
+      return res.redirect(process.env.FRONTEND_URL! + '&error=canceled');
+    } else return res.redirect(process.env.FRONTEND_URL! + '&error=server_error');
+  }
+
+  const cookieState = req.cookies['google-oauth-state'] as string | undefined;
+
+  if (!cookieState || !queryState || cookieState !== queryState) {
+    return res.redirect(process.env.FRONTEND_URL! + '&error=invalid_state');
+  }
+
+  res.clearCookie('google-oauth-state', {
+    httpOnly: true,
+    maxAge: 10 * 60 * 1000,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+  });
+
+  try {
+    const { accessToken, refreshToken } = await authService.handleGoogleCallback(code);
+
+    setJWTCookie(res, 'accessToken', accessToken, ACCESS_TOKEN_EXPIRES_AT);
+    setJWTCookie(res, 'refreshToken', refreshToken, REFRESH_TOKEN_EXPIRES_AT);
+
+    res.redirect(process.env.FRONTEND_URL!);
+  } catch (err) {
+    res.redirect(process.env.FRONTEND_URL! + '&error=server_error');
+  }
 }
