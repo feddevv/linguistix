@@ -20,7 +20,7 @@ class User {
       const user = await pg.query<UserRow>(
         `
 				INSERT INTO users (google_id, first_name, last_name, password, email, role)
-				VALUES ($1, $2, $3, $4, $5)
+				VALUES ($1, $2, $3, $4, $5, $6)
         ON CONFLICT (google_id) DO UPDATE SET email = EXCLUDED.email
         RETURNING *;
 			`,

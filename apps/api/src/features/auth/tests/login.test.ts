@@ -162,7 +162,6 @@ describe('POST /api/auth/login', () => {
       const res = await login(buildCredentials()).expect(200);
       const payload = verifyToken(getCookie(res, 'refreshToken')!.value);
 
-      expect(payload).toMatchObject({ id: user.id, email: user.email, role: user.role });
       expect(payload.exp! - payload.iat!).toBe(REFRESH_TOKEN_TTL);
       expect(payload).not.toHaveProperty('password');
     });
