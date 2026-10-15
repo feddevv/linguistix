@@ -150,6 +150,10 @@ export async function handleGoogleCallback(code: string) {
   const userByEmail = await UserRepo.findUserByEmail(decodedJWTPayload.email);
   let user = userByGoogleId ?? userByEmail;
 
+  if (user && user.googleId && user.googleId !== decodedJWTPayload.sub!) {
+    throw new HttpError(403, 'This email is already linked');
+  }
+
   if (!user) {
     user = await UserRepo.create({
       email: decodedJWTPayload.email,
