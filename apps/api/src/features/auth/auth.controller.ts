@@ -101,7 +101,7 @@ export async function googleCallback(
   req: Request<unknown, unknown, unknown, OAuthQueryString>,
   res: Response,
 ) {
-  const { code, state: queryState, error } = req.query;
+  const { code, state: queryState, error } = req.validatedQuery!;
   if (error) {
     if (error === 'access_denied') {
       return res.redirect(process.env.FRONTEND_URL! + '&error=canceled');
