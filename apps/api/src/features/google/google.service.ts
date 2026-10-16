@@ -1,4 +1,4 @@
-import { AppError } from '../../errors/HttpError.js';
+import { AppError } from '../../errors/AppError.js';
 
 interface GoogleTokenResponse {
   access_token: string;

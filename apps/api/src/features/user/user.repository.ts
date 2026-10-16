@@ -2,7 +2,7 @@ import type { Role } from '@repo/shared';
 import { pg } from '../../db/pg.js';
 import { toUserDomain } from '../../utils/mappers.js';
 import { DatabaseError } from 'pg';
-import { AppError } from '../../errors/HttpError.js';
+import { AppError } from '../../errors/AppError.js';
 import type { UserRow } from './user.types.js';
 
 interface CreateUserParameters {

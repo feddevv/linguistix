@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import { AppError, type ErrorCode } from '../errors/HttpError.js';
+import { AppError, type ErrorCode } from '../errors/AppError.js';
 import { ZodError } from 'zod';
 
 function isAppError(err: any): err is AppError {

@@ -1,7 +1,7 @@
 import { RefreshTokenRepo } from './auth.repository.js';
 import type { LoginInput, RegisterInput } from '@repo/shared';
 import { compare, hash } from 'bcrypt';
-import { AppError } from '../../errors/HttpError.js';
+import { AppError } from '../../errors/AppError.js';
 import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { hashString } from './utils/hashing.js';
 import { UserRepo } from '../user/user.repository.js';
