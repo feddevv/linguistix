@@ -8,7 +8,8 @@ import type {
 import * as authService from './auth.service.js';
 import { deleteJWTCookie, setJWTCookie } from './utils/cookies.js';
 import type { OAuthQueryString } from './auth.schemas.js';
-import { AppError, type ErrorCode } from '../../errors/AppError.js';
+import { AppError } from '../../errors/AppError.js';
+import type { ErrorCode } from '@repo/shared';
 
 const ACCESS_TOKEN_EXPIRES_AT = 15 * 60 * 1000;
 const REFRESH_TOKEN_EXPIRES_AT = 15 * 24 * 60 * 60 * 1000;

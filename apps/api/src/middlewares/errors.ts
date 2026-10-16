@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
-import { AppError, type ErrorCode } from '../errors/AppError.js';
+import { AppError } from '../errors/AppError.js';
 import { ZodError } from 'zod';
+import type { ErrorCode } from '@repo/shared';
 
 export function globalErrorHandler(err: unknown, req: Request, res: Response, next: NextFunction) {
   let statusCode = 500;

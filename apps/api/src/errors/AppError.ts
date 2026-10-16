@@ -1,16 +1,4 @@
-export type ErrorCode =
-  | 'SERVER_ERROR'
-  | 'EMAIL_IN_USE'
-  | 'INVALID_CREDENTIALS'
-  | 'TOKEN_NOT_FOUND'
-  | 'INVALID_TOKEN'
-  | 'USER_NOT_FOUND'
-  | 'EMAIL_UNVERIFIED'
-  | 'ACCOUNT_IN_USE'
-  | 'CANCELED_AUTH'
-  | 'INVALID_STATE'
-  | 'INVALID_GRANT'
-  | 'VALIDATION_ERROR';
+import type { ErrorCode } from '@repo/shared';
 
 export class AppError extends Error {
   public readonly errorCode: ErrorCode;
