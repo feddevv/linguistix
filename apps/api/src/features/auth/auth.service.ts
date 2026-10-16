@@ -163,7 +163,7 @@ export async function handleGoogleCallback(code: string) {
   } else if (!user.googleId || user.googleId !== decodedJWTPayload.sub!) {
     throw new AppError(
       'EMAIL_IN_USE',
-      401,
+      409,
       'An account with this email already exists. Please sign in with your email and password.',
     );
   }
