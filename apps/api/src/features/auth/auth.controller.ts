@@ -8,6 +8,7 @@ import type {
 import * as authService from './auth.service.js';
 import { deleteJWTCookie, setJWTCookie } from './utils/cookies.js';
 import type { OAuthQueryString } from './auth.schemas.js';
+import { AppError } from '../../errors/AppError.js';
 
 const ACCESS_TOKEN_EXPIRES_AT = 15 * 60 * 1000;
 const REFRESH_TOKEN_EXPIRES_AT = 15 * 24 * 60 * 60 * 1000;
@@ -102,7 +103,7 @@ export async function googleCallback(
   const { code, state: queryState, error } = req.validatedQuery!;
   if (error) {
     if (error === 'access_denied') {
-      return res.redirect(process.env.FRONTEND_URL! + '&error=CANCELED');
+      return res.redirect(process.env.FRONTEND_URL! + '&error=CANCELED_AUTH');
     } else return res.redirect(process.env.FRONTEND_URL! + '&error=SERVER_ERROR');
   }
 
@@ -127,6 +128,9 @@ export async function googleCallback(
 
     res.redirect(process.env.FRONTEND_URL!);
   } catch (err) {
-    res.redirect(process.env.FRONTEND_URL! + '&error=SERVER_ERROR');
+    if (err instanceof AppError) {
+      res.redirect(process.env.FRONTEND_URL! + `?error=${err.errorCode}`);
+    }
+    res.redirect(process.env.FRONTEND_URL! + '?error=SERVER_ERROR');
   }
 }

@@ -7,7 +7,7 @@ export type ErrorCode =
   | 'USER_NOT_FOUND'
   | 'EMAIL_UNVERIFIED'
   | 'ACCOUNT_IN_USE'
-  | 'CANCELED'
+  | 'CANCELED_AUTH'
   | 'INVALID_STATE'
   | 'INVALID_GRANT'
   | 'VALIDATION_ERROR';
