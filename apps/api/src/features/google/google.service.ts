@@ -1,4 +1,4 @@
-import { HttpError } from '../../errors/HttpError.js';
+import { AppError } from '../../errors/AppError.js';
 
 interface GoogleTokenResponse {
   access_token: string;
@@ -31,10 +31,10 @@ export async function getGoogleTokens(code: string) {
 
   if (!response.ok) {
     if ('error' in data && data.error === 'invalid_grant') {
-      throw new HttpError(400, data.error_description);
+      throw new AppError('INVALID_GRANT', 400, data.error_description);
     } else {
       console.error(data, response);
-      throw new HttpError(502, 'Authorization error');
+      throw new AppError('SERVER_ERROR', 502, 'Authorization error');
     }
   }
 

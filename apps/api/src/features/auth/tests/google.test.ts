@@ -1,7 +1,7 @@
 import { describe, it, beforeEach, expect, vi } from 'vitest';
 import request from 'supertest';
 import { app } from '../../../app.js';
-import { getCookie } from './utils.js';
+import { getCookie } from './utils/utils.js';
 
 const ENDPOINT = '/api/auth/google';
 

@@ -4,7 +4,8 @@ import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { app } from '../../../app.js';
 import { pg } from '../../../db/pg.js';
 import { hashString } from '../utils/hashing.js';
-import { existingUser, seedUser, getCookie, loginAs, expectAuthCookiesCleared } from './utils.js';
+import { existingUser, seedUser, getCookie, loginAs, daysFromNow } from './utils/utils.js';
+import { expectAuthCookiesCleared, expectErrorBody } from './utils/expects.js';
 import { RefreshTokenRepo } from '../auth.repository.js';
 
 const ENDPOINT = '/api/auth/refresh';
@@ -26,16 +27,8 @@ function signToken(
   return jwt.sign(payload, secret, options);
 }
 
-function daysFromNow(days: number) {
-  return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-}
-
 function verifyToken(token: string) {
   return jwt.verify(token, process.env.SECRET_KEY!) as JwtPayload;
-}
-
-function expectErrorBody(body: unknown, message?: string) {
-  expect(body).toEqual({ message: message ?? expect.any(String) });
 }
 
 // A failed refresh must never hand out usable tokens: auth cookies are either

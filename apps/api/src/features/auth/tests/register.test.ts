@@ -5,8 +5,9 @@ import type { RegisterInput } from '@repo/shared';
 import { app } from '../../../app.js';
 import { pg } from '../../../db/pg.js';
 import { UserRepo } from '../../user/user.repository.js';
-import { UUID_REGEX } from './utils.js';
+import { UUID_REGEX } from './utils/utils.js';
 import { hashString } from '../utils/hashing.js';
+import { expectErrorBody } from './utils/expects.js';
 
 const ENDPOINT = '/api/auth/register';
 
@@ -32,10 +33,6 @@ function register(body: unknown) {
 function emailOfLength(length: number) {
   const suffix = '@example.com';
   return 'a'.repeat(length - suffix.length) + suffix;
-}
-
-function expectErrorBody(body: unknown, message?: string) {
-  expect(body).toEqual({ message: message ?? expect.any(String) });
 }
 
 beforeEach(async () => {
@@ -88,7 +85,7 @@ describe('POST /api/auth/register', () => {
       expect(row!.password).not.toBe(user.password);
 
       const sha256hash = hashString(user.password as string);
-      expect(await compare(sha256hash, row!.password)).toBe(true);
+      expect(await compare(sha256hash, row!.password!)).toBe(true);
     });
   });
 
@@ -214,7 +211,7 @@ describe('POST /api/auth/register', () => {
 
         const row = await UserRepo.findUserByEmail('ada.lovelace@example.com');
         const sha256hash = hashString(password);
-        expect(await compare(sha256hash, row!.password)).toBe(true);
+        expect(await compare(sha256hash, row!.password!)).toBe(true);
       });
 
       it('rejects a password of 5 characters', async () => {

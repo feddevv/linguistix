@@ -1,10 +1,9 @@
 import { hash } from 'bcrypt';
-import { hashString } from '../utils/hashing.js';
-import { pg } from '../../../db/pg.js';
+import { hashString } from '../../utils/hashing.js';
+import { pg } from '../../../../db/pg.js';
 import { type Response } from 'supertest';
 import request from 'supertest';
-import { app } from '../../../app.js';
-import { expect } from 'vitest';
+import { app } from '../../../../app.js';
 
 export const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -67,20 +66,6 @@ export async function loginAs(user: { email: string; password: string }) {
   };
 }
 
-export function expectAuthCookiesCleared(res: Response) {
-  for (const name of ['accessToken', 'refreshToken']) {
-    const cookie = getCookie(res, name);
-
-    expect(cookie, `${name} cookie should be cleared`).toBeDefined();
-    expect(cookie!.value).toBe('');
-    expect(cookie!.attrs.has('httponly')).toBe(true);
-    expect(cookie!.attrs.get('samesite')?.toLowerCase()).toBe('lax');
-
-    const expires = cookie!.attrs.get('expires');
-    const maxAge = cookie!.attrs.get('max-age');
-    const isExpired =
-      (expires !== undefined && new Date(expires).getTime() <= Date.now()) ||
-      (maxAge !== undefined && Number(maxAge) <= 0);
-    expect(isExpired).toBe(true);
-  }
+export function daysFromNow(days: number) {
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 }

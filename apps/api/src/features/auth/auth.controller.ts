@@ -7,12 +7,20 @@ import type {
 } from '@repo/shared';
 import * as authService from './auth.service.js';
 import { deleteJWTCookie, setJWTCookie } from './utils/cookies.js';
-import { HttpError } from '../../errors/HttpError.js';
-import { UserRepo } from '../user/user.repository.js';
 import type { OAuthQueryString } from './auth.schemas.js';
+import { AppError } from '../../errors/AppError.js';
+import type { ErrorCode } from '@repo/shared';
 
 const ACCESS_TOKEN_EXPIRES_AT = 15 * 60 * 1000;
 const REFRESH_TOKEN_EXPIRES_AT = 15 * 24 * 60 * 60 * 1000;
+
+function buildErrorUrl(baseUrl: string, error: ErrorCode) {
+  const url = new URL(baseUrl);
+
+  url.searchParams.append('error', error);
+
+  return url.toString();
+}
 
 export async function register(
   req: Request<unknown, unknown, RegisterInput>,
@@ -104,14 +112,14 @@ export async function googleCallback(
   const { code, state: queryState, error } = req.validatedQuery!;
   if (error) {
     if (error === 'access_denied') {
-      return res.redirect(process.env.FRONTEND_URL! + '&error=canceled');
-    } else return res.redirect(process.env.FRONTEND_URL! + '&error=server_error');
+      return res.redirect(buildErrorUrl(process.env.FRONTEND_URL!, 'CANCELED_AUTH'));
+    } else return res.redirect(buildErrorUrl(process.env.FRONTEND_URL!, 'SERVER_ERROR'));
   }
 
   const cookieState = req.cookies['google-oauth-state'] as string | undefined;
 
   if (!cookieState || !queryState || cookieState !== queryState) {
-    return res.redirect(process.env.FRONTEND_URL! + '&error=invalid_state');
+    return res.redirect(buildErrorUrl(process.env.FRONTEND_URL!, 'INVALID_STATE'));
   }
 
   res.clearCookie('google-oauth-state', {
@@ -129,6 +137,9 @@ export async function googleCallback(
 
     res.redirect(process.env.FRONTEND_URL!);
   } catch (err) {
-    res.redirect(process.env.FRONTEND_URL! + '&error=server_error');
+    if (err instanceof AppError) {
+      return res.redirect(buildErrorUrl(process.env.FRONTEND_URL!, err.errorCode));
+    }
+    res.redirect(buildErrorUrl(process.env.FRONTEND_URL!, 'SERVER_ERROR'));
   }
 }
