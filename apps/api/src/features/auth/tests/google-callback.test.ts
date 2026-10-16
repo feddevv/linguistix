@@ -4,7 +4,8 @@ import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { app } from '../../../app.js';
 import { pg } from '../../../db/pg.js';
 import { hashString } from '../utils/hashing.js';
-import { getCookie } from './utils.js';
+import { getCookie } from './utils/utils.js';
+import { expectNoAuthCookies } from './utils/expects.js';
 import { UserRepo } from '../../user/user.repository.js';
 import { RefreshTokenRepo } from '../auth.repository.js';
 import { getGoogleTokens } from '../../google/google.service.js';
@@ -59,11 +60,6 @@ function seedUser(overrides: { googleId?: string; email?: string; password?: str
     role: 'student',
     ...overrides,
   });
-}
-
-function expectNoAuthCookies(res: Response) {
-  expect(getCookie(res, 'accessToken')).toBeUndefined();
-  expect(getCookie(res, 'refreshToken')).toBeUndefined();
 }
 
 // Returns the id of the user the issued session belongs to.

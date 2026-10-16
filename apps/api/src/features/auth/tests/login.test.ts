@@ -4,7 +4,8 @@ import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { app } from '../../../app.js';
 import { pg } from '../../../db/pg.js';
 import { LoginInput } from '@repo/shared';
-import { existingUser, seedUser, getCookie } from './utils.js';
+import { existingUser, seedUser, getCookie } from './utils/utils.js';
+import { expectErrorBody, expectNoAuthCookies } from './utils/expects.js';
 
 const ENDPOINT = '/api/auth/login';
 const INVALID_CREDENTIALS = 'Email or password is incorrect';
@@ -28,15 +29,6 @@ function login(body: unknown) {
 
 function verifyToken(token: string) {
   return jwt.verify(token, process.env.SECRET_KEY!) as JwtPayload;
-}
-
-function expectErrorBody(body: unknown, message?: string) {
-  expect(body).toMatchObject({ message: message ?? expect.any(String) });
-}
-
-function expectNoAuthCookies(res: Response) {
-  expect(getCookie(res, 'accessToken')).toBeUndefined();
-  expect(getCookie(res, 'refreshToken')).toBeUndefined();
 }
 
 beforeEach(async () => {

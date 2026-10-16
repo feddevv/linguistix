@@ -4,7 +4,8 @@ import jwt from 'jsonwebtoken';
 import { app } from '../../../app.js';
 import { pg } from '../../../db/pg.js';
 import { hashString } from '../utils/hashing.js';
-import { existingUser, seedUser, getCookie, loginAs, expectAuthCookiesCleared } from './utils.js';
+import { existingUser, seedUser, getCookie, loginAs, daysFromNow } from './utils/utils.js';
+import { expectAuthCookiesCleared } from './utils/expects.js';
 import { RefreshTokenRepo } from '../auth.repository.js';
 
 const ENDPOINT = '/api/auth/logout';
@@ -21,10 +22,6 @@ function logout(cookies: { refreshToken?: string; accessToken?: string } = {}) {
 
 function refresh(refreshToken: string) {
   return request(app).post('/api/auth/refresh').set('Cookie', `refreshToken=${refreshToken}`);
-}
-
-function daysFromNow(days: number) {
-  return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 }
 
 async function isStored(refreshToken: string) {
