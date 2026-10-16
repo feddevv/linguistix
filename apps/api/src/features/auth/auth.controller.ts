@@ -7,8 +7,6 @@ import type {
 } from '@repo/shared';
 import * as authService from './auth.service.js';
 import { deleteJWTCookie, setJWTCookie } from './utils/cookies.js';
-import { HttpError } from '../../errors/HttpError.js';
-import { UserRepo } from '../user/user.repository.js';
 import type { OAuthQueryString } from './auth.schemas.js';
 
 const ACCESS_TOKEN_EXPIRES_AT = 15 * 60 * 1000;
@@ -104,14 +102,14 @@ export async function googleCallback(
   const { code, state: queryState, error } = req.validatedQuery!;
   if (error) {
     if (error === 'access_denied') {
-      return res.redirect(process.env.FRONTEND_URL! + '&error=canceled');
-    } else return res.redirect(process.env.FRONTEND_URL! + '&error=server_error');
+      return res.redirect(process.env.FRONTEND_URL! + '&error=CANCELED');
+    } else return res.redirect(process.env.FRONTEND_URL! + '&error=SERVER_ERROR');
   }
 
   const cookieState = req.cookies['google-oauth-state'] as string | undefined;
 
   if (!cookieState || !queryState || cookieState !== queryState) {
-    return res.redirect(process.env.FRONTEND_URL! + '&error=invalid_state');
+    return res.redirect(process.env.FRONTEND_URL! + '&error=INVALID_STATE');
   }
 
   res.clearCookie('google-oauth-state', {
@@ -129,6 +127,6 @@ export async function googleCallback(
 
     res.redirect(process.env.FRONTEND_URL!);
   } catch (err) {
-    res.redirect(process.env.FRONTEND_URL! + '&error=server_error');
+    res.redirect(process.env.FRONTEND_URL! + '&error=SERVER_ERROR');
   }
 }

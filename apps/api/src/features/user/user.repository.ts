@@ -2,7 +2,7 @@ import type { Role } from '@repo/shared';
 import { pg } from '../../db/pg.js';
 import { toUserDomain } from '../../utils/mappers.js';
 import { DatabaseError } from 'pg';
-import { HttpError } from '../../errors/HttpError.js';
+import { AppError } from '../../errors/HttpError.js';
 import type { UserRow } from './user.types.js';
 
 interface CreateUserParameters {
@@ -31,7 +31,7 @@ class User {
     } catch (err) {
       if (err instanceof DatabaseError) {
         if (err.code === '23505') {
-          throw new HttpError(409, 'User with this email already exists');
+          throw new AppError('EMAIL_IN_USE', 409, 'User with this email already exists');
         }
       }
 

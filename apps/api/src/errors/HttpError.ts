@@ -1,13 +1,4 @@
-export class HttpError extends Error {
-  statusCode: number;
-
-  constructor(statusCode: number, message: string) {
-    super(message);
-    this.statusCode = statusCode;
-  }
-}
-
-type ErrorCode =
+export type ErrorCode =
   | 'SERVER_ERROR'
   | 'EMAIL_IN_USE'
   | 'INVALID_CREDENTIALS'
@@ -15,14 +6,18 @@ type ErrorCode =
   | 'INVALID_TOKEN'
   | 'USER_NOT_FOUND'
   | 'EMAIL_UNVERIFIED'
-  | 'ACCOUNT_IN_USE';
+  | 'ACCOUNT_IN_USE'
+  | 'CANCELED'
+  | 'INVALID_STATE'
+  | 'INVALID_GRANT'
+  | 'VALIDATION_ERROR';
 
 export class AppError extends Error {
   public readonly errorCode: ErrorCode;
   public readonly statusCode: number;
   public readonly details?: unknown;
 
-  constructor(errorCode: ErrorCode, statusCode: number, message: string, details: unknown) {
+  constructor(errorCode: ErrorCode, statusCode: number, message: string, details?: unknown) {
     super(message);
     this.errorCode = errorCode;
     this.statusCode = statusCode;
