@@ -31,7 +31,7 @@ class User {
     } catch (err) {
       if (err instanceof DatabaseError) {
         if (err.code === '23505') {
-          throw new AppError('EMAIL_IN_USE', 409, 'User with this email already exists');
+          throw new AppError('EMAIL_IN_USE', 'User with this email already exists');
         }
       }
 

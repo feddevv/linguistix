@@ -9,7 +9,8 @@ import { expectNoAuthCookies } from './utils/expects.js';
 import { UserRepo } from '../../user/user.repository.js';
 import { RefreshTokenRepo } from '../auth.repository.js';
 import { getGoogleTokens } from '../../google/google.service.js';
-import { AppError, ErrorCode } from '../../../errors/AppError.js';
+import { AppError } from '../../../errors/AppError.js';
+import { ErrorCode } from '@repo/shared';
 
 vi.mock('../../google/google.service.js', () => ({ getGoogleTokens: vi.fn() }));
 
@@ -191,7 +192,9 @@ describe('GET /api/auth/google/callback', () => {
     });
 
     it('redirects with server_error when the code exchange fails', async () => {
-      getGoogleTokensMock.mockRejectedValue(new AppError('SERVER_ERROR', 400, 'Bad Request'));
+      getGoogleTokensMock.mockRejectedValue(
+        new AppError('SERVER_ERROR', 'Code exchange fails', 502),
+      );
 
       const res = await callback({ code: CODE, state: STATE }).expect(302);
 

@@ -44,14 +44,13 @@ export async function register({ firstName, lastName, password, email, role }: R
 export async function login({ email, password }: LoginInput) {
   const user = await UserRepo.findUserByEmail(email);
 
-  if (!user) throw new AppError('INVALID_CREDENTIALS', 401, 'Email or password is incorrect');
+  if (!user) throw new AppError('INVALID_CREDENTIALS', 'Email or password is incorrect');
 
   const sha256hash = hashString(password);
-  if (!user.password)
-    throw new AppError('INVALID_CREDENTIALS', 401, 'Email or password is incorrect');
+  if (!user.password) throw new AppError('INVALID_CREDENTIALS', 'Email or password is incorrect');
   const isMatch = await compare(sha256hash, user.password);
 
-  if (!isMatch) throw new AppError('INVALID_CREDENTIALS', 401, 'Email or password is incorrect');
+  if (!isMatch) throw new AppError('INVALID_CREDENTIALS', 'Email or password is incorrect');
 
   const { accessToken, refreshToken, hashedRefreshToken, date } = issueSession({
     id: user.id,
@@ -73,22 +72,22 @@ export async function login({ email, password }: LoginInput) {
 }
 
 export async function refresh(refreshToken: string | undefined) {
-  if (!refreshToken) throw new AppError('TOKEN_NOT_FOUND', 401, 'Refresh token is not attached');
+  if (!refreshToken) throw new AppError('TOKEN_NOT_FOUND', 'Refresh token is not attached');
 
   try {
     jwt.verify(refreshToken, process.env.SECRET_KEY!);
   } catch (err) {
-    throw new AppError('INVALID_TOKEN', 401, 'Invalid or expired token');
+    throw new AppError('INVALID_TOKEN', 'Invalid or expired token');
   }
 
   const hashedRefreshToken = hashString(refreshToken);
   const dbToken = await RefreshTokenRepo.findRefreshTokenByHash(hashedRefreshToken);
 
-  if (!dbToken) throw new AppError('INVALID_TOKEN', 401, 'Invalid or expired token');
+  if (!dbToken) throw new AppError('INVALID_TOKEN', 'Invalid or expired token');
 
   const user = await UserRepo.findUserById(dbToken.userId);
 
-  if (!user) throw new AppError('USER_NOT_FOUND', 401, "Current user doesn't exist");
+  if (!user) throw new AppError('USER_NOT_FOUND', "Current user doesn't exist");
 
   const {
     accessToken: newAccessToken,
@@ -107,7 +106,7 @@ export async function refresh(refreshToken: string | undefined) {
     newExpiresAt,
   );
 
-  if (!updated || updated < 1) throw new AppError('INVALID_TOKEN', 401, 'Invalid or expired token');
+  if (!updated || updated < 1) throw new AppError('INVALID_TOKEN', 'Invalid or expired token');
 
   return { newAccessToken, newRefreshToken };
 }
@@ -146,7 +145,7 @@ export async function handleGoogleCallback(code: string) {
   const googleTokens = await getGoogleTokens(code);
   const decodedJWTPayload = jwtDecode<GoogleJWTPayload>(googleTokens.id_token);
   if (!decodedJWTPayload.email_verified)
-    throw new AppError('EMAIL_UNVERIFIED', 403, 'Email should be verified');
+    throw new AppError('EMAIL_UNVERIFIED', 'Email should be verified');
 
   const userByGoogleId = await UserRepo.findUserByGoogleId(decodedJWTPayload.sub!);
   const userByEmail = await UserRepo.findUserByEmail(decodedJWTPayload.email);
@@ -163,7 +162,6 @@ export async function handleGoogleCallback(code: string) {
   } else if (!user.googleId || user.googleId !== decodedJWTPayload.sub!) {
     throw new AppError(
       'EMAIL_IN_USE',
-      409,
       'An account with this email already exists. Please sign in with your email and password.',
     );
   }
@@ -172,11 +170,7 @@ export async function handleGoogleCallback(code: string) {
     const existingUser = await UserRepo.findUserByEmail(decodedJWTPayload.email);
 
     if (existingUser) {
-      throw new AppError(
-        'EMAIL_IN_USE',
-        401,
-        'This Google email is already used by another account',
-      );
+      throw new AppError('EMAIL_IN_USE', 'This Google email is already used by another account');
     }
     await UserRepo.updateUserEmail(decodedJWTPayload.email, user.id);
   }
