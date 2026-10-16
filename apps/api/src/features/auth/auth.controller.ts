@@ -103,14 +103,14 @@ export async function googleCallback(
   const { code, state: queryState, error } = req.validatedQuery!;
   if (error) {
     if (error === 'access_denied') {
-      return res.redirect(process.env.FRONTEND_URL! + '&error=CANCELED_AUTH');
-    } else return res.redirect(process.env.FRONTEND_URL! + '&error=SERVER_ERROR');
+      return res.redirect(process.env.FRONTEND_URL! + '?error=CANCELED_AUTH');
+    } else return res.redirect(process.env.FRONTEND_URL! + '?error=SERVER_ERROR');
   }
 
   const cookieState = req.cookies['google-oauth-state'] as string | undefined;
 
   if (!cookieState || !queryState || cookieState !== queryState) {
-    return res.redirect(process.env.FRONTEND_URL! + '&error=INVALID_STATE');
+    return res.redirect(process.env.FRONTEND_URL! + '?error=INVALID_STATE');
   }
 
   res.clearCookie('google-oauth-state', {
