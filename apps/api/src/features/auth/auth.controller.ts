@@ -137,7 +137,7 @@ export async function googleCallback(
     res.redirect(process.env.FRONTEND_URL!);
   } catch (err) {
     if (err instanceof AppError) {
-      res.redirect(buildErrorUrl(process.env.FRONTEND_URL!, err.errorCode));
+      return res.redirect(buildErrorUrl(process.env.FRONTEND_URL!, err.errorCode));
     }
     res.redirect(buildErrorUrl(process.env.FRONTEND_URL!, 'SERVER_ERROR'));
   }
