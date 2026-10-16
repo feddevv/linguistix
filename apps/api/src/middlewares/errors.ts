@@ -3,12 +3,7 @@ import { AppError, type ErrorCode } from '../errors/AppError.js';
 import { ZodError } from 'zod';
 
 function isAppError(err: any): err is AppError {
-  return (
-    err !== null &&
-    typeof err === 'object' &&
-    typeof err.statusCode === 'number' &&
-    'errorCode' in err
-  );
+  return err !== null && typeof err === 'object' && typeof err.statusCode === 'number';
 }
 
 export function globalErrorHandler(err: unknown, req: Request, res: Response, next: NextFunction) {

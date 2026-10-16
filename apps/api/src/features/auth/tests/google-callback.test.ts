@@ -8,14 +8,14 @@ import { getCookie } from './utils.js';
 import { UserRepo } from '../../user/user.repository.js';
 import { RefreshTokenRepo } from '../auth.repository.js';
 import { getGoogleTokens } from '../../google/google.service.js';
-import { AppError } from '../../../errors/HttpError.js';
+import { AppError, ErrorCode } from '../../../errors/AppError.js';
 
 vi.mock('../../google/google.service.js', () => ({ getGoogleTokens: vi.fn() }));
 
 const getGoogleTokensMock = vi.mocked(getGoogleTokens);
 
 const ENDPOINT = '/api/auth/google/callback';
-const FRONTEND_URL = 'http://localhost:5173';
+const FRONTEND_URL = 'http://localhost:5173/';
 const STATE = 'a'.repeat(64);
 const CODE = 'google-auth-code';
 
@@ -47,8 +47,8 @@ function callback(query: Record<string, string>, stateCookie: string | null = ST
   return req;
 }
 
-function errorRedirect(error: string) {
-  return `${FRONTEND_URL}&error=${error}`;
+function errorRedirect(error: ErrorCode) {
+  return `${FRONTEND_URL}?error=${error}`;
 }
 
 function seedUser(overrides: { googleId?: string; email?: string; password?: string } = {}) {
@@ -175,7 +175,7 @@ describe('GET /api/auth/google/callback', () => {
 
       const res = await callback(query, stateCookie).expect(302);
 
-      expect(res.headers.location).toBe(errorRedirect('invalid_state'));
+      expect(res.headers.location).toBe(errorRedirect('INVALID_STATE'));
       expect(getGoogleTokensMock).not.toHaveBeenCalled();
       expectNoAuthCookies(res);
       expect(await UserRepo.countUsers()).toBe(0);
@@ -184,12 +184,12 @@ describe('GET /api/auth/google/callback', () => {
 
   describe('Google errors', () => {
     it.each<[string, string]>([
-      ['access_denied', 'canceled'],
-      ['server_error', 'server_error'],
+      ['access_denied', 'CANCELED_AUTH'],
+      ['server_error', 'SERVER_ERROR'],
     ])('redirects with %s → %s without exchanging the code', async (error, expected) => {
       const res = await callback({ error, state: STATE }).expect(302);
 
-      expect(res.headers.location).toBe(errorRedirect(expected));
+      expect(res.headers.location).toBe(errorRedirect(expected as ErrorCode));
       expect(getGoogleTokensMock).not.toHaveBeenCalled();
       expectNoAuthCookies(res);
     });
@@ -209,7 +209,7 @@ describe('GET /api/auth/google/callback', () => {
 
       const res = await callback({ code: CODE, state: STATE }).expect(302);
 
-      expect(res.headers.location).toBe(errorRedirect('server_error'));
+      expect(res.headers.location).toBe(errorRedirect('EMAIL_UNVERIFIED'));
       expectNoAuthCookies(res);
       expect(await UserRepo.countUsers()).toBe(0);
     });

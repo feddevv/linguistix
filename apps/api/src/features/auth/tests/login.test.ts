@@ -31,7 +31,7 @@ function verifyToken(token: string) {
 }
 
 function expectErrorBody(body: unknown, message?: string) {
-  expect(body).toEqual({ message: message ?? expect.any(String) });
+  expect(body).toMatchObject({ message: message ?? expect.any(String) });
 }
 
 function expectNoAuthCookies(res: Response) {

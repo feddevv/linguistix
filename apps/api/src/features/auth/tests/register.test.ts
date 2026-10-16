@@ -35,7 +35,7 @@ function emailOfLength(length: number) {
 }
 
 function expectErrorBody(body: unknown, message?: string) {
-  expect(body).toEqual({ message: message ?? expect.any(String) });
+  expect(body).toMatchObject({ message: message ?? expect.any(String) });
 }
 
 beforeEach(async () => {
@@ -88,7 +88,7 @@ describe('POST /api/auth/register', () => {
       expect(row!.password).not.toBe(user.password);
 
       const sha256hash = hashString(user.password as string);
-      expect(await compare(sha256hash, row!.password)).toBe(true);
+      expect(await compare(sha256hash, row!.password!)).toBe(true);
     });
   });
 
@@ -214,7 +214,7 @@ describe('POST /api/auth/register', () => {
 
         const row = await UserRepo.findUserByEmail('ada.lovelace@example.com');
         const sha256hash = hashString(password);
-        expect(await compare(sha256hash, row!.password)).toBe(true);
+        expect(await compare(sha256hash, row!.password!)).toBe(true);
       });
 
       it('rejects a password of 5 characters', async () => {
