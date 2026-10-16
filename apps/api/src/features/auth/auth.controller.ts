@@ -8,10 +8,18 @@ import type {
 import * as authService from './auth.service.js';
 import { deleteJWTCookie, setJWTCookie } from './utils/cookies.js';
 import type { OAuthQueryString } from './auth.schemas.js';
-import { AppError } from '../../errors/AppError.js';
+import { AppError, type ErrorCode } from '../../errors/AppError.js';
 
 const ACCESS_TOKEN_EXPIRES_AT = 15 * 60 * 1000;
 const REFRESH_TOKEN_EXPIRES_AT = 15 * 24 * 60 * 60 * 1000;
+
+function buildErrorUrl(baseUrl: string, error: ErrorCode) {
+  const url = new URL(baseUrl);
+
+  url.searchParams.append('error', error);
+
+  return url.toString();
+}
 
 export async function register(
   req: Request<unknown, unknown, RegisterInput>,
@@ -103,14 +111,14 @@ export async function googleCallback(
   const { code, state: queryState, error } = req.validatedQuery!;
   if (error) {
     if (error === 'access_denied') {
-      return res.redirect(process.env.FRONTEND_URL! + '?error=CANCELED_AUTH');
-    } else return res.redirect(process.env.FRONTEND_URL! + '?error=SERVER_ERROR');
+      return res.redirect(buildErrorUrl(process.env.FRONTEND_URL!, 'CANCELED_AUTH'));
+    } else return res.redirect(buildErrorUrl(process.env.FRONTEND_URL!, 'SERVER_ERROR'));
   }
 
   const cookieState = req.cookies['google-oauth-state'] as string | undefined;
 
   if (!cookieState || !queryState || cookieState !== queryState) {
-    return res.redirect(process.env.FRONTEND_URL! + '?error=INVALID_STATE');
+    return res.redirect(buildErrorUrl(process.env.FRONTEND_URL!, 'INVALID_STATE'));
   }
 
   res.clearCookie('google-oauth-state', {
@@ -129,8 +137,8 @@ export async function googleCallback(
     res.redirect(process.env.FRONTEND_URL!);
   } catch (err) {
     if (err instanceof AppError) {
-      res.redirect(process.env.FRONTEND_URL! + `?error=${err.errorCode}`);
+      res.redirect(buildErrorUrl(process.env.FRONTEND_URL!, err.errorCode));
     }
-    res.redirect(process.env.FRONTEND_URL! + '?error=SERVER_ERROR');
+    res.redirect(buildErrorUrl(process.env.FRONTEND_URL!, 'SERVER_ERROR'));
   }
 }
