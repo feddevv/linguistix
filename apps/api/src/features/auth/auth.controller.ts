@@ -146,5 +146,16 @@ export async function googleCallback(req: Request, res: Response) {
 }
 
 export async function verifyEmail(req: Request, res: Response) {
-  const {} = req.validatedQuery as VerifyEmailQueryString;
+  const { token } = req.validatedQuery as VerifyEmailQueryString;
+
+  try {
+    await authService.verifyEmail(token);
+
+    res.redirect(process.env.FRONTEND_URL!);
+  } catch (err) {
+    if (err instanceof AppError) {
+      return res.redirect(buildErrorUrl(process.env.FRONTEND_URL!, err.errorCode));
+    }
+    res.redirect(buildErrorUrl(process.env.FRONTEND_URL!, 'SERVER_ERROR'));
+  }
 }

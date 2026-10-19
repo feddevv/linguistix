@@ -58,7 +58,7 @@ export async function register({ firstName, lastName, password, email, role }: R
       from: 'linguistix@lang.com',
       to: user.email,
       subject: 'Linguistix email verification',
-      text: `Verify your email http://localhost:3000/auth/verify-email?token=${verificationToken}`,
+      text: `Verify your email http://localhost:3000/api/auth/verify-email?token=${verificationToken}`,
     });
 
     await pg.query('COMMIT');
@@ -221,4 +221,29 @@ export async function handleGoogleCallback(code: string) {
     accessToken,
     refreshToken,
   };
+}
+
+export async function verifyEmail(token: string) {
+  const hashedToken = hashString(token);
+  const dbToken = await EmailVerificationTokenRepo.findByTokenHash(hashedToken);
+
+  if (!dbToken)
+    throw new AppError(
+      'INVALID_VERIFICATION_TOKEN',
+      'Provided email verification token is invalid or has expired',
+    );
+
+  try {
+    await pg.query('BEGIN');
+
+    const user = await UserRepo.updateIsVerified(true, dbToken.userId);
+    if (!user) throw new AppError('USER_NOT_FOUND', "This user doesn't exist");
+
+    await EmailVerificationTokenRepo.updateUsedAt(new Date(), dbToken.id);
+
+    await pg.query('COMMIT');
+  } catch (err) {
+    await pg.query('ROLLBACK');
+    throw err;
+  }
 }

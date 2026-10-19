@@ -83,14 +83,25 @@ class EmailVerificationToken {
   async findByTokenHash(tokenHash: string) {
     const token = await pg.query<EmailVerificationTokenRow>(
       `
-        SELECT * FROM email_verification_tokens WHERE token_hash = $1 AND expires_at < NOW()
-        AND used_at = NULL;
+        SELECT * FROM email_verification_tokens WHERE token_hash = $1 AND expires_at > NOW()
+        AND used_at IS NULL;
       `,
+      [tokenHash],
     );
 
     if (!token.rows[0]) return null;
 
     return toEmailVerificationTokenDto(token.rows[0]);
+  }
+
+  async updateUsedAt(usedAt: Date, tokenId: number) {
+    const token = await pg.query(
+      `UPDATE email_verification_tokens SET used_at = $1 
+      WHERE id = $2;`,
+      [usedAt, tokenId],
+    );
+
+    return token.rowCount;
   }
 }
 

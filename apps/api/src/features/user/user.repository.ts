@@ -101,6 +101,15 @@ class User {
 
     return user.rowCount;
   }
+
+  async updateIsVerified(isVerified: boolean, userId: string) {
+    const user = await pg.query(`UPDATE users SET is_verified = $1 WHERE id = $2;`, [
+      isVerified,
+      userId,
+    ]);
+
+    return user.rowCount;
+  }
 }
 
 export const UserRepo = new User();

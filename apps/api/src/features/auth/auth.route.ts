@@ -16,4 +16,8 @@ router.get(
   validate({ query: oauthSchema }),
   authController.googleCallback,
 );
-router.get('/auth/verify-email', validate({ query: verifyEmailSchema }));
+router.get(
+  '/auth/verify-email',
+  validate({ query: verifyEmailSchema }),
+  authController.verifyEmail,
+);
