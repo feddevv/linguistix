@@ -1,6 +1,14 @@
 import { pg } from '../../db/pg.js';
-import { toRefreshTokenDomain, toRefreshTokenDomainList } from '../../utils/mappers.js';
-import type { RefreshTokenInputDto, RefreshTokenRow } from './auth.types.js';
+import {
+  toEmailVerificationTokenDto,
+  toRefreshTokenDomain,
+  toRefreshTokenDomainList,
+} from '../../utils/mappers.js';
+import type {
+  EmailVerificationTokenRow,
+  RefreshTokenInputDto,
+  RefreshTokenRow,
+} from './auth.types.js';
 
 class RefreshToken {
   async findRefreshTokenByHash(refreshTokenHash: string) {
@@ -52,4 +60,26 @@ class RefreshToken {
   }
 }
 
+interface CreateTokenParameters {
+  expiresAt: Date;
+  tokenHash: string;
+  userId: string;
+}
+
+class EmailVerificationToken {
+  async createToken({ expiresAt, tokenHash, userId }: CreateTokenParameters) {
+    const token = await pg.query<EmailVerificationTokenRow>(
+      `
+        INSERT INTO email_verification_tokens (expires_at, token_hash, user_id)
+        VALUES ($1, $2, $3) 
+        RETURNING *;
+      `,
+      [expiresAt, tokenHash, userId],
+    );
+
+    return toEmailVerificationTokenDto(token.rows[0]!);
+  }
+}
+
 export const RefreshTokenRepo = new RefreshToken();
+export const EmailVerificationTokenRepo = new EmailVerificationToken();

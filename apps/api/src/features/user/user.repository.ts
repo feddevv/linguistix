@@ -103,26 +103,4 @@ class User {
   }
 }
 
-interface CreateTokenParameters {
-  expiresAt: Date;
-  tokenHash: string;
-  userId: string;
-}
-
-class EmailVerificationToken {
-  async createToken({ expiresAt, tokenHash, userId }: CreateTokenParameters) {
-    const token = await pg.query<EmailVerificationTokenRow>(
-      `
-        INSERT INTO email_verification_tokens (expires_at, token_hash, user_id)
-        VALUES ($1, $2, $3) 
-        RETURNING *;
-      `,
-      [expiresAt, tokenHash, userId],
-    );
-
-    return toEmailVerificationTokenDto(token.rows[0]!);
-  }
-}
-
 export const UserRepo = new User();
-export const EmailVerificationTokenRepo = new EmailVerificationToken();
