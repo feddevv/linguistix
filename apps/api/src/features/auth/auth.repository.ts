@@ -79,6 +79,19 @@ class EmailVerificationToken {
 
     return toEmailVerificationTokenDto(token.rows[0]!);
   }
+
+  async findByTokenHash(tokenHash: string) {
+    const token = await pg.query<EmailVerificationTokenRow>(
+      `
+        SELECT * FROM email_verification_tokens WHERE token_hash = $1 AND expires_at < NOW()
+        AND used_at = NULL;
+      `,
+    );
+
+    if (!token.rows[0]) return null;
+
+    return toEmailVerificationTokenDto(token.rows[0]);
+  }
 }
 
 export const RefreshTokenRepo = new RefreshToken();
