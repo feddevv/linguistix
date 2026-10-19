@@ -158,6 +158,7 @@ export async function handleGoogleCallback(code: string) {
       lastName: decodedJWTPayload.family_name ?? '',
       googleId: decodedJWTPayload.sub!,
       role: null,
+      isVerified: true,
     });
   } else if (!user.googleId || user.googleId !== decodedJWTPayload.sub!) {
     throw new AppError(

@@ -12,19 +12,36 @@ interface CreateUserParameters {
   password?: string;
   email: string;
   role: Role | null;
+  isVerified?: boolean;
 }
 
 class User {
-  async create({ googleId, firstName, lastName, email, password, role }: CreateUserParameters) {
+  async create({
+    googleId,
+    firstName,
+    lastName,
+    email,
+    password,
+    role,
+    isVerified,
+  }: CreateUserParameters) {
     try {
       const user = await pg.query<UserRow>(
         `
-				INSERT INTO users (google_id, first_name, last_name, password, email, role)
-				VALUES ($1, $2, $3, $4, $5, $6)
+				INSERT INTO users (google_id, first_name, last_name, password, email, role, is_verified)
+				VALUES ($1, $2, $3, $4, $5, $6, $7)
         ON CONFLICT (google_id) DO UPDATE SET email = EXCLUDED.email
         RETURNING *;
 			`,
-        [googleId ?? null, firstName, lastName, password ?? null, email, role ?? null],
+        [
+          googleId ?? null,
+          firstName,
+          lastName,
+          password ?? null,
+          email,
+          role ?? null,
+          isVerified ?? null,
+        ],
       );
 
       return toUserDomain(user.rows[0]!);

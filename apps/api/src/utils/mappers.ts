@@ -11,6 +11,7 @@ export function toUserDomain(data: UserRow): UserDomain {
     password: data.password,
     createdAt: data.created_at,
     role: data.role,
+    isVerified: data.is_verified,
   };
 }
 
