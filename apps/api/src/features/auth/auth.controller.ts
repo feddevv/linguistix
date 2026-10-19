@@ -144,3 +144,5 @@ export async function googleCallback(req: Request, res: Response) {
     res.redirect(buildErrorUrl(process.env.FRONTEND_URL!, 'SERVER_ERROR'));
   }
 }
+
+export async function verifyEmail(req: Request, res: Response) {}
