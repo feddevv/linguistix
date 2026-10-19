@@ -38,11 +38,12 @@ erDiagram
 
     users {
         uuid      id PK
+        text      google_id UK
         varchar   first_name
         varchar   last_name
         varchar   email UK
         varchar   password
-        date      created_at
+        timestamp created_at
         user_role role
     }
 
@@ -66,7 +67,7 @@ erDiagram
         uuid          teacher_id FK
         uuid          room_id FK
         timestamp     scheduled_at
-        date          ends_at
+        timestamp     ends_at
         lesson_status status
     }
 
@@ -76,8 +77,8 @@ erDiagram
         text              content
         uuid              teacher_id FK
         uuid              room_id FK
-        date              assigned_at
-        date              due_to
+        timestamp         assigned_at
+        timestamp         due_to
         assignment_status status
         smallint          max_grade
     }
@@ -87,7 +88,7 @@ erDiagram
         text              content
         uuid              student_id FK
         uuid              assignment_id FK
-        date              submitted_at
+        timestamp         submitted_at
         submission_status status
         text              feedback
         smallint          grade
@@ -95,13 +96,13 @@ erDiagram
     }
 
     words {
-        uuid    id PK
-        varchar term
-        text    meaning
-        uuid    room_id FK
-        text    content_sentence
-        uuid    created_by FK
-        date    created_at
+        uuid      id PK
+        varchar   term
+        text      meaning
+        uuid      room_id FK
+        text      content_sentence
+        uuid      created_by FK
+        timestamp created_at
     }
 
     refresh_tokens {
@@ -125,17 +126,18 @@ erDiagram
 
 ### `users`
 
-Every account on the platform. The `role` column decides whether the user is a student or a teacher.
+Every account on the platform. The `role` column decides whether the user is a student or a teacher. Accounts created through Google sign-in have no password and start with no role.
 
-| Column       | Type           | Null | Default        | Notes                    |
-| ------------ | -------------- | ---- | -------------- | ------------------------ |
-| `id`         | `UUID`         | no   | `uuidv7()`     | Primary key              |
-| `first_name` | `VARCHAR(100)` | no   |                |                          |
-| `last_name`  | `VARCHAR(100)` | no   |                |                          |
-| `email`      | `VARCHAR(255)` | no   |                | Unique                   |
-| `password`   | `VARCHAR(255)` | no   |                | Stores the password hash |
-| `created_at` | `DATE`         | no   | `CURRENT_DATE` |                          |
-| `role`       | `user_role`    | no   |                |                          |
+| Column       | Type           | Null | Default        | Notes                                     |
+| ------------ | -------------- | ---- | -------------- | ----------------------------------------- |
+| `id`         | `UUID`         | no   | `uuidv7()`     | Primary key                               |
+| `google_id`  | `TEXT`         | yes  |                | Unique. Google account ID, if linked      |
+| `first_name` | `VARCHAR(100)` | no   |                |                                           |
+| `last_name`  | `VARCHAR(100)` | no   |                |                                           |
+| `email`      | `VARCHAR(255)` | no   |                | Unique                                    |
+| `password`   | `VARCHAR(255)` | yes  |                | Password hash. `NULL` for Google accounts |
+| `created_at` | `TIMESTAMP`    | no   | `CURRENT_DATE` | Default is midnight of the current day    |
+| `role`       | `user_role`    | yes  |                | `NULL` until the user picks a role        |
 
 ### `rooms`
 
@@ -172,10 +174,8 @@ A live session in a room, run by a teacher.
 | `teacher_id`   | `UUID`          | yes  |                | FK → `users.id`, `ON DELETE CASCADE`      |
 | `room_id`      | `UUID`          | no   |                | FK → `rooms.id`, `ON DELETE CASCADE`      |
 | `scheduled_at` | `TIMESTAMP`     | no   | `CURRENT_DATE` | Default is midnight of the current day    |
-| `ends_at`      | `DATE`          | no   |                |                                           |
+| `ends_at`      | `TIMESTAMP`     | no   |                |                                           |
 | `status`       | `lesson_status` | no   | `'scheduled'`  |                                           |
-
-> `scheduled_at` is a `TIMESTAMP` but `ends_at` is a `DATE`, so a lesson's end has no time of day.
 
 ### `assignments`
 
@@ -188,8 +188,8 @@ Homework a teacher sets for a room. Draft assignments can be incomplete. Any oth
 | `content`     | `TEXT`              | yes* |            |                                       |
 | `teacher_id`  | `UUID`              | yes  |            | FK → `users.id`, `ON DELETE SET NULL` |
 | `room_id`     | `UUID`              | no   |            | FK → `rooms.id`, `ON DELETE CASCADE`  |
-| `assigned_at` | `DATE`              | yes* |            |                                       |
-| `due_to`      | `DATE`              | yes* |            | Due date                              |
+| `assigned_at` | `TIMESTAMP`         | yes* |            |                                       |
+| `due_to`      | `TIMESTAMP`         | yes* |            | Due date                              |
 | `status`      | `assignment_status` | no   | `'draft'`  |                                       |
 | `max_grade`   | `SMALLINT`          | yes* |            |                                       |
 
@@ -205,7 +205,7 @@ A student's answer to an assignment, plus the teacher's review. A student can su
 | `content`       | `TEXT`              | no   |                |                                            |
 | `student_id`    | `UUID`              | no   |                | FK → `users.id`, `ON DELETE CASCADE`       |
 | `assignment_id` | `UUID`              | no   |                | FK → `assignments.id`, `ON DELETE CASCADE` |
-| `submitted_at`  | `DATE`              | no   | `CURRENT_DATE` |                                            |
+| `submitted_at`  | `TIMESTAMP`         | no   | `CURRENT_DATE` | Default is midnight of the current day     |
 | `status`        | `submission_status` | no   | `'pending'`    |                                            |
 | `feedback`      | `TEXT`              | yes  |                | Teacher's comments                         |
 | `grade`         | `SMALLINT`          | yes  |                |                                            |
@@ -215,15 +215,15 @@ A student's answer to an assignment, plus the teacher's review. A student can su
 
 Vocabulary entries, each with its meaning and an example sentence. A word with `room_id = NULL` is not tied to any room.
 
-| Column             | Type           | Null | Default        | Notes                                 |
-| ------------------ | -------------- | ---- | -------------- | ------------------------------------- |
-| `id`               | `UUID`         | no   | `uuidv7()`     | Primary key                           |
-| `term`             | `VARCHAR(255)` | no   |                |                                       |
-| `meaning`          | `TEXT`         | no   |                |                                       |
-| `room_id`          | `UUID`         | yes  |                | FK → `rooms.id`, `ON DELETE CASCADE`  |
-| `content_sentence` | `TEXT`         | no   |                | Example sentence that uses the term   |
-| `created_by`       | `UUID`         | no   |                | FK → `users.id`, `ON DELETE SET NULL` |
-| `created_at`       | `DATE`         | no   | `CURRENT_DATE` |                                       |
+| Column             | Type           | Null | Default        | Notes                                  |
+| ------------------ | -------------- | ---- | -------------- | -------------------------------------- |
+| `id`               | `UUID`         | no   | `uuidv7()`     | Primary key                            |
+| `term`             | `VARCHAR(255)` | no   |                |                                        |
+| `meaning`          | `TEXT`         | no   |                |                                        |
+| `room_id`          | `UUID`         | yes  |                | FK → `rooms.id`, `ON DELETE CASCADE`   |
+| `content_sentence` | `TEXT`         | no   |                | Example sentence that uses the term    |
+| `created_by`       | `UUID`         | no   |                | FK → `users.id`, `ON DELETE SET NULL`  |
+| `created_at`       | `TIMESTAMP`    | no   | `CURRENT_DATE` | Default is midnight of the current day |
 
 > `created_by` is `NOT NULL` but its foreign key is `ON DELETE SET NULL`. Deleting a user who added any word therefore fails with a not-null violation.
 
@@ -240,8 +240,8 @@ Refresh tokens issued to a user. Only a hash of each token is stored.
 
 ## Delete Behaviour
 
-| When this is deleted… | Effect                                                                                                                                                                                                       |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| When this is deleted… | Effect                                                                                                                                                                                                    |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **User**              | Blocked if the user owns a room or added any word. Otherwise their memberships, lessons, submissions and refresh tokens are deleted, and their assignments keep existing with `teacher_id` set to `NULL`. |
-| **Room**              | Its memberships, lessons, assignments (and so their submissions) and words are deleted.                                                                                                                      |
-| **Assignment**        | Its submissions are deleted.                                                                                                                                                                                 |
+| **Room**              | Its memberships, lessons, assignments (and so their submissions) and words are deleted.                                                                                                                   |
+| **Assignment**        | Its submissions are deleted.                                                                                                                                                                              |
