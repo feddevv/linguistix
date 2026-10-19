@@ -4,6 +4,7 @@ import { toUserDomain } from '../../utils/mappers.js';
 import { DatabaseError } from 'pg';
 import { AppError } from '../../errors/AppError.js';
 import type { UserRow } from './user.types.js';
+import type { EmailVerificationTokenRow } from '../auth/auth.types.js';
 
 interface CreateUserParameters {
   googleId?: string;
@@ -99,6 +100,27 @@ class User {
     const user = await pg.query(`UPDATE users SET email = $1 WHERE id = $2;`, [newEmail, userId]);
 
     return user.rowCount;
+  }
+}
+
+interface CreateTokenParameters {
+  expiresAt: Date;
+  tokenHash: string;
+  userId: string;
+}
+
+class EmailVerificationToken {
+  async createToken({ expiresAt, tokenHash, userId }: CreateTokenParameters) {
+    const token = await pg.query<EmailVerificationTokenRow>(
+      `
+        INSERT INTO email_verification_tokens (expires_at, token_hash, user_id)
+        VALUES ($1, $2, $3) 
+        RETURNING *;
+      `,
+      [expiresAt, tokenHash, userId],
+    );
+
+    return token.rows[0];
   }
 }
 
