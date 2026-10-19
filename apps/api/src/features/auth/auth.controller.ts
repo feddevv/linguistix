@@ -129,6 +129,10 @@ export async function googleCallback(
     sameSite: 'lax',
   });
 
+  if (!code) {
+    return res.redirect(buildErrorUrl(process.env.FRONTEND_URL!, 'INVALID_GRANT'));
+  }
+
   try {
     const { accessToken, refreshToken } = await authService.handleGoogleCallback(code);
 
