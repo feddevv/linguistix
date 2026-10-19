@@ -1,6 +1,6 @@
 import type { Role } from '@repo/shared';
 import { pg } from '../../db/pg.js';
-import { toUserDomain } from '../../utils/mappers.js';
+import { toEmailVerificationTokenDto, toUserDomain } from '../../utils/mappers.js';
 import { DatabaseError } from 'pg';
 import { AppError } from '../../errors/AppError.js';
 import type { UserRow } from './user.types.js';
@@ -120,8 +120,9 @@ class EmailVerificationToken {
       [expiresAt, tokenHash, userId],
     );
 
-    return token.rows[0];
+    return toEmailVerificationTokenDto(token.rows[0]!);
   }
 }
 
 export const UserRepo = new User();
+export const EmailVerificationTokenRepo = new EmailVerificationToken();
