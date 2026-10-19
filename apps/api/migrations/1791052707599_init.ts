@@ -15,7 +15,8 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         email VARCHAR(255) NOT NULL UNIQUE,
         password VARCHAR(255),
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_DATE,
-        role user_role
+        role user_role,
+        is_verified BOOLEAN NOT NULL DEFAULT FALSE
       );
 
       CREATE TABLE IF NOT EXISTS "rooms" (
