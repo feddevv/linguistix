@@ -4,10 +4,11 @@ import { compare, hash } from 'bcrypt';
 import { AppError } from '../../errors/AppError.js';
 import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { hashString } from './utils/hashing.js';
-import { UserRepo } from '../user/user.repository.js';
+import { EmailVerificationTokenRepo, UserRepo } from '../user/user.repository.js';
 import { jwtDecode } from 'jwt-decode';
 import { getGoogleTokens } from '../google/google.service.js';
 import crypto from 'crypto';
+import { pg } from '../../db/pg.js';
 
 function issueSession(user: JwtPayload, secretKey = process.env.SECRET_KEY!) {
   const accessToken = jwt.sign({ ...user, jti: crypto.randomUUID() }, secretKey, {
@@ -30,16 +31,35 @@ export async function register({ firstName, lastName, password, email, role }: R
   const sha256hash = hashString(password);
   const passwordHash = await hash(sha256hash, 10);
 
-  const user = await UserRepo.create({
-    firstName,
-    lastName,
-    password: passwordHash,
-    email,
-    role,
-    isVerified: false,
-  });
+  try {
+    await pg.query('BEGIN');
 
-  return user;
+    const user = await UserRepo.create({
+      firstName,
+      lastName,
+      password: passwordHash,
+      email,
+      role,
+      isVerified: false,
+    });
+
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 1);
+
+    const token = await EmailVerificationTokenRepo.createToken({
+      tokenHash: hashString(verificationToken),
+      userId: user.id,
+      expiresAt,
+    });
+
+    await pg.query('COMMIT');
+
+    return user;
+  } catch (err) {
+    await pg.query('ROLLBACK');
+    throw err;
+  }
 }
 
 export async function login({ email, password }: LoginInput) {
