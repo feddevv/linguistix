@@ -7,7 +7,7 @@ import type {
 } from '@repo/shared';
 import * as authService from './auth.service.js';
 import { deleteJWTCookie, setJWTCookie } from './utils/cookies.js';
-import type { OAuthQueryString } from './auth.schemas.js';
+import type { OAuthQueryString, VerifyEmailQueryString } from './auth.schemas.js';
 import { AppError } from '../../errors/AppError.js';
 import type { ErrorCode } from '@repo/shared';
 
@@ -145,4 +145,6 @@ export async function googleCallback(req: Request, res: Response) {
   }
 }
 
-export async function verifyEmail(req: Request, res: Response) {}
+export async function verifyEmail(req: Request, res: Response) {
+  const {} = req.validatedQuery as VerifyEmailQueryString;
+}
