@@ -105,11 +105,8 @@ export async function google(req: Request, res: Response) {
   res.redirect(googleAuthUrl);
 }
 
-export async function googleCallback(
-  req: Request<unknown, unknown, unknown, OAuthQueryString>,
-  res: Response,
-) {
-  const { code, state: queryState, error } = req.validatedQuery!;
+export async function googleCallback(req: Request, res: Response) {
+  const { code, state: queryState, error } = req.validatedQuery as OAuthQueryString;
   if (error) {
     if (error === 'access_denied') {
       return res.redirect(buildErrorUrl(process.env.FRONTEND_URL!, 'CANCELED_AUTH'));
