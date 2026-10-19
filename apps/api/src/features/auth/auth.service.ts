@@ -9,6 +9,7 @@ import { jwtDecode } from 'jwt-decode';
 import { getGoogleTokens } from '../google/google.service.js';
 import crypto from 'crypto';
 import { pg } from '../../db/pg.js';
+import { transporter } from '../../lib/transporter.js';
 
 function issueSession(user: JwtPayload, secretKey = process.env.SECRET_KEY!) {
   const accessToken = jwt.sign({ ...user, jti: crypto.randomUUID() }, secretKey, {
@@ -47,10 +48,17 @@ export async function register({ firstName, lastName, password, email, role }: R
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 1);
 
-    const token = await EmailVerificationTokenRepo.createToken({
+    await EmailVerificationTokenRepo.createToken({
       tokenHash: hashString(verificationToken),
       userId: user.id,
       expiresAt,
+    });
+
+    await transporter.sendMail({
+      from: 'linguistix@lang.com',
+      to: user.email,
+      subject: 'Linguistix email verification',
+      text: `Verify your email http://localhost:3000/auth/verify-email?token=${verificationToken}`,
     });
 
     await pg.query('COMMIT');
