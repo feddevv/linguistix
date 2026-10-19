@@ -12,7 +12,7 @@ interface CreateUserParameters {
   password?: string;
   email: string;
   role: Role | null;
-  isVerified?: boolean;
+  isVerified: boolean;
 }
 
 class User {

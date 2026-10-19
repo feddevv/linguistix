@@ -36,6 +36,7 @@ export async function register({ firstName, lastName, password, email, role }: R
     password: passwordHash,
     email,
     role,
+    isVerified: false,
   });
 
   return user;
