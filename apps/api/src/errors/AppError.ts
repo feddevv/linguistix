@@ -14,6 +14,7 @@ export const ERROR_STATUS_MAP: Record<ErrorCode, number> = {
   INVALID_STATE: 400,
   INVALID_GRANT: 400,
   VALIDATION_ERROR: 422,
+  EMAIL_ALREADY_VERIFIED: 409,
 };
 
 export class AppError extends Error {
