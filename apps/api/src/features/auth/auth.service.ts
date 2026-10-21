@@ -236,7 +236,8 @@ export async function verifyEmail(token: string) {
   const user = await UserRepo.findUserById(dbToken.userId);
   if (!user) throw new AppError('USER_NOT_FOUND', "This user doesn't exist");
 
-  if (user.isVerified) throw new AppError('USER_NOT_FOUND', 'This email is already verified');
+  if (user.isVerified)
+    throw new AppError('EMAIL_ALREADY_VERIFIED', 'This email is already verified');
 
   try {
     await pg.query('BEGIN');
