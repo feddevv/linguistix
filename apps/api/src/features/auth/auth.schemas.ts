@@ -8,6 +8,6 @@ export const oauthSchema = z.object({
 export type OAuthQueryString = z.infer<typeof oauthSchema>;
 
 export const verifyEmailSchema = z.object({
-  token: z.string(),
+  token: z.string().trim().min(1, 'Token is empty'),
 });
 export type VerifyEmailQueryString = z.infer<typeof verifyEmailSchema>;
