@@ -32,8 +32,9 @@ export async function register({ firstName, lastName, password, email, role }: R
   const sha256hash = hashString(password);
   const passwordHash = await hash(sha256hash, 10);
 
+  const client = await pg.connect();
   try {
-    await pg.query('BEGIN');
+    await client.query('BEGIN');
 
     const user = await UserRepo.create({
       firstName,
@@ -42,6 +43,7 @@ export async function register({ firstName, lastName, password, email, role }: R
       email,
       role,
       isVerified: false,
+      client,
     });
 
     const verificationToken = crypto.randomBytes(32).toString('hex');
@@ -52,6 +54,7 @@ export async function register({ firstName, lastName, password, email, role }: R
       tokenHash: hashString(verificationToken),
       userId: user.id,
       expiresAt,
+      client,
     });
 
     await transporter.sendMail({
@@ -61,12 +64,14 @@ export async function register({ firstName, lastName, password, email, role }: R
       text: `Verify your email http://localhost:3000/api/auth/verify-email?token=${verificationToken}`,
     });
 
-    await pg.query('COMMIT');
+    await client.query('COMMIT');
 
     return user;
   } catch (err) {
-    await pg.query('ROLLBACK');
+    await client.query('ROLLBACK');
     throw err;
+  } finally {
+    client.release();
   }
 }
 

@@ -65,11 +65,13 @@ interface CreateTokenParameters {
   expiresAt: Date;
   tokenHash: string;
   userId: string;
+  client?: PoolClient;
 }
 
 class EmailVerificationToken {
-  async createToken({ expiresAt, tokenHash, userId }: CreateTokenParameters) {
-    const token = await pg.query<EmailVerificationTokenRow>(
+  async createToken({ expiresAt, tokenHash, userId, client }: CreateTokenParameters) {
+    const executor = client ?? pg;
+    const token = await executor.query<EmailVerificationTokenRow>(
       `
         INSERT INTO email_verification_tokens (expires_at, token_hash, user_id)
         VALUES ($1, $2, $3) 

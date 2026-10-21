@@ -14,6 +14,7 @@ interface CreateUserParameters {
   email: string;
   role: Role | null;
   isVerified: boolean;
+  client?: PoolClient;
 }
 
 class User {
@@ -25,9 +26,11 @@ class User {
     password,
     role,
     isVerified,
+    client,
   }: CreateUserParameters) {
+    const executor = client ?? pg;
     try {
-      const user = await pg.query<UserRow>(
+      const user = await executor.query<UserRow>(
         `
 				INSERT INTO users (google_id, first_name, last_name, password, email, role, is_verified)
 				VALUES ($1, $2, $3, $4, $5, $6, $7)
