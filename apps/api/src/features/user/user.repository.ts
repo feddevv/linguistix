@@ -1,7 +1,7 @@
 import type { Role } from '@repo/shared';
 import { pg } from '../../db/pg.js';
 import { toEmailVerificationTokenDto, toUserDomain } from '../../utils/mappers.js';
-import { DatabaseError } from 'pg';
+import { DatabaseError, type PoolClient } from 'pg';
 import { AppError } from '../../errors/AppError.js';
 import type { UserRow } from './user.types.js';
 import type { EmailVerificationTokenRow } from '../auth/auth.types.js';
@@ -102,8 +102,9 @@ class User {
     return user.rowCount;
   }
 
-  async updateIsVerified(isVerified: boolean, userId: string) {
-    const user = await pg.query(`UPDATE users SET is_verified = $1 WHERE id = $2;`, [
+  async updateIsVerified(isVerified: boolean, userId: string, client?: PoolClient) {
+    const executor = client ?? pg;
+    const user = await executor.query(`UPDATE users SET is_verified = $1 WHERE id = $2;`, [
       isVerified,
       userId,
     ]);

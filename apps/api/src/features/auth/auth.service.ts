@@ -239,17 +239,20 @@ export async function verifyEmail(token: string) {
   if (user.isVerified)
     throw new AppError('EMAIL_ALREADY_VERIFIED', 'This email is already verified');
 
+  const client = await pg.connect();
   try {
-    await pg.query('BEGIN');
+    await client.query('BEGIN');
 
-    const user = await UserRepo.updateIsVerified(true, dbToken.userId);
+    const user = await UserRepo.updateIsVerified(true, dbToken.userId, client);
     if (!user) throw new AppError('USER_NOT_FOUND', "This user doesn't exist");
 
-    await EmailVerificationTokenRepo.updateUsedAt(new Date(), dbToken.id);
+    await EmailVerificationTokenRepo.updateUsedAt(new Date(), dbToken.id, client);
 
-    await pg.query('COMMIT');
+    await client.query('COMMIT');
   } catch (err) {
-    await pg.query('ROLLBACK');
+    await client.query('ROLLBACK');
     throw err;
+  } finally {
+    client.release();
   }
 }

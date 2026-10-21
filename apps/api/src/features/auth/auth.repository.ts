@@ -1,3 +1,4 @@
+import type { PoolClient } from 'pg';
 import { pg } from '../../db/pg.js';
 import {
   toEmailVerificationTokenDto,
@@ -95,8 +96,9 @@ class EmailVerificationToken {
     return toEmailVerificationTokenDto(token.rows[0]);
   }
 
-  async updateUsedAt(usedAt: Date, tokenId: number) {
-    const token = await pg.query(
+  async updateUsedAt(usedAt: Date, tokenId: number, client?: PoolClient) {
+    const executor = client ?? pg;
+    const token = await executor.query(
       `UPDATE email_verification_tokens SET used_at = $1 
       WHERE id = $2;`,
       [usedAt, tokenId],
