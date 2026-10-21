@@ -141,6 +141,7 @@ export async function googleCallback(req: Request, res: Response) {
     if (err instanceof AppError) {
       return res.redirect(buildErrorUrl(process.env.FRONTEND_URL!, err.errorCode));
     }
+    console.error(err);
     res.redirect(buildErrorUrl(process.env.FRONTEND_URL!, 'SERVER_ERROR'));
   }
 }
@@ -156,6 +157,7 @@ export async function verifyEmail(req: Request, res: Response) {
     if (err instanceof AppError) {
       return res.redirect(buildErrorUrl(process.env.FRONTEND_URL!, err.errorCode));
     }
+    console.error(err);
     res.redirect(buildErrorUrl(process.env.FRONTEND_URL!, 'SERVER_ERROR'));
   }
 }
