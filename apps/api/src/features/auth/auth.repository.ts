@@ -87,8 +87,7 @@ class EmailVerificationToken {
     const token = await pg.query<EmailVerificationTokenRow>(
       `
         SELECT * FROM email_verification_tokens 
-        WHERE token_hash = $1 AND expires_at > NOW()
-        AND used_at IS NULL;
+        WHERE token_hash = $1 AND expires_at > NOW();
       `,
       [tokenHash],
     );
@@ -98,15 +97,18 @@ class EmailVerificationToken {
     return toEmailVerificationTokenDto(token.rows[0]);
   }
 
-  async updateUsedAt(usedAt: Date, tokenId: number, client?: PoolClient) {
+  async consumeToken(hashedToken: string, client?: PoolClient) {
     const executor = client ?? pg;
-    const token = await executor.query(
-      `UPDATE email_verification_tokens SET used_at = $1 
-      WHERE id = $2;`,
-      [usedAt, tokenId],
+    const token = await executor.query<Pick<EmailVerificationTokenRow, 'user_id'>>(
+      `UPDATE email_verification_tokens SET used_at = NOW() 
+      WHERE token_hash = $1 AND used_at IS NULL AND expires_at > NOW()
+      RETURNING user_id;`,
+      [hashedToken],
     );
 
-    return token.rowCount;
+    if (!token.rows[0]) return null;
+
+    return { userId: token.rows[0].user_id };
   }
 }
 
