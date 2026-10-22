@@ -1,4 +1,4 @@
-import { describe, it, beforeEach, afterAll, expect } from 'vitest';
+import { describe, it, beforeEach, afterAll, expect, vi } from 'vitest';
 import request from 'supertest';
 import { compare } from 'bcrypt';
 import type { RegisterInput } from '@repo/shared';
@@ -10,6 +10,10 @@ import { hashString } from '../utils/hashing.js';
 import { expectErrorBody } from './utils/expects.js';
 
 const ENDPOINT = '/api/auth/register';
+
+vi.mock('../../../lib/transporter.ts', () => ({
+  transporter: { sendMail: () => {} },
+}));
 
 function buildUser(overrides: Partial<Record<keyof RegisterInput, unknown>> = {}) {
   return {
