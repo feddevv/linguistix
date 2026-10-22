@@ -161,3 +161,5 @@ export async function verifyEmail(req: Request, res: Response) {
     res.redirect(buildErrorUrl(process.env.FRONTEND_URL!, 'SERVER_ERROR'));
   }
 }
+
+export async function resendVerification(req: Request, res: Response) {}

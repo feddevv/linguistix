@@ -260,3 +260,5 @@ export async function verifyEmail(token: string) {
     client.release();
   }
 }
+
+export async function resendVerification(email: string) {}

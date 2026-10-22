@@ -21,3 +21,5 @@ router.get(
   validate({ query: verifyEmailSchema }),
   authController.verifyEmail,
 );
+
+router.post('/auth/resend-verification', authController.resendVerification);
