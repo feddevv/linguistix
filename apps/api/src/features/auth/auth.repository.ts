@@ -1,6 +1,15 @@
+import type { PoolClient } from 'pg';
 import { pg } from '../../db/pg.js';
-import { toRefreshTokenDomain, toRefreshTokenDomainList } from '../../utils/mappers.js';
-import type { RefreshTokenInputDto, RefreshTokenRow } from './auth.types.js';
+import {
+  toEmailVerificationTokenDto,
+  toRefreshTokenDomain,
+  toRefreshTokenDomainList,
+} from '../../utils/mappers.js';
+import type {
+  EmailVerificationTokenRow,
+  RefreshTokenInputDto,
+  RefreshTokenRow,
+} from './auth.types.js';
 
 class RefreshToken {
   async findRefreshTokenByHash(refreshTokenHash: string) {
@@ -52,4 +61,42 @@ class RefreshToken {
   }
 }
 
+interface CreateTokenParameters {
+  expiresAt: Date;
+  tokenHash: string;
+  userId: string;
+  client?: PoolClient;
+}
+
+class EmailVerificationToken {
+  async createToken({ expiresAt, tokenHash, userId, client }: CreateTokenParameters) {
+    const executor = client ?? pg;
+    const token = await executor.query<EmailVerificationTokenRow>(
+      `
+        INSERT INTO email_verification_tokens (expires_at, token_hash, user_id)
+        VALUES ($1, $2, $3) 
+        RETURNING *;
+      `,
+      [expiresAt, tokenHash, userId],
+    );
+
+    return toEmailVerificationTokenDto(token.rows[0]!);
+  }
+
+  async consumeToken(hashedToken: string, client?: PoolClient) {
+    const executor = client ?? pg;
+    const token = await executor.query<Pick<EmailVerificationTokenRow, 'user_id'>>(
+      `UPDATE email_verification_tokens SET used_at = NOW() 
+      WHERE token_hash = $1 AND used_at IS NULL AND expires_at > NOW()
+      RETURNING user_id;`,
+      [hashedToken],
+    );
+
+    if (!token.rows[0]) return null;
+
+    return { userId: token.rows[0].user_id };
+  }
+}
+
 export const RefreshTokenRepo = new RefreshToken();
+export const EmailVerificationTokenRepo = new EmailVerificationToken();

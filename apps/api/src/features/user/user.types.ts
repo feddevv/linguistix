@@ -9,6 +9,7 @@ export interface UserRow {
   password: string | null;
   created_at: Date;
   role: Role | null;
+  is_verified: boolean;
 }
 
 export interface UserDomain {
@@ -20,4 +21,5 @@ export interface UserDomain {
   password: string | null;
   createdAt: Date;
   role: Role | null;
+  isVerified: boolean;
 }

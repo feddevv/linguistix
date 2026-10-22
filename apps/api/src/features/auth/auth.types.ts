@@ -16,3 +16,19 @@ export type RefreshTokenInputDto = Pick<
   RefreshTokenDomain,
   'refreshTokenHash' | 'userId' | 'expiresAt'
 >;
+
+export interface EmailVerificationTokenRow {
+  id: number;
+  token_hash: string;
+  expires_at: Date;
+  used_at: Date | null;
+  user_id: string;
+}
+
+export interface EmailVerificationTokenDto {
+  id: number;
+  tokenHash: string;
+  expiresAt: Date;
+  usedAt: Date | null;
+  userId: string;
+}

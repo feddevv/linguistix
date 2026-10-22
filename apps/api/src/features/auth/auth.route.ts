@@ -2,7 +2,7 @@ import { Router } from 'express';
 import * as authController from './auth.controller.js';
 import { validate } from '../../middlewares/validator.js';
 import { loginSchema, registerSchema } from '@repo/shared';
-import { oauthSchema } from './auth.schemas.js';
+import { oauthSchema, verifyEmailSchema } from './auth.schemas.js';
 
 export const router: Router = Router();
 
@@ -15,4 +15,9 @@ router.get(
   '/auth/google/callback',
   validate({ query: oauthSchema }),
   authController.googleCallback,
+);
+router.get(
+  '/auth/verify-email',
+  validate({ query: verifyEmailSchema }),
+  authController.verifyEmail,
 );

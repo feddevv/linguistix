@@ -1,4 +1,4 @@
-import { describe, it, beforeEach, afterAll, expect } from 'vitest';
+import { describe, it, beforeEach, afterAll, expect, vi } from 'vitest';
 import request from 'supertest';
 import { compare } from 'bcrypt';
 import type { RegisterInput } from '@repo/shared';
@@ -8,8 +8,14 @@ import { UserRepo } from '../../user/user.repository.js';
 import { UUID_REGEX } from './utils/utils.js';
 import { hashString } from '../utils/hashing.js';
 import { expectErrorBody } from './utils/expects.js';
+import { transporter } from '../../../lib/transporter.js';
 
 const ENDPOINT = '/api/auth/register';
+
+vi.mock('../../../lib/transporter.ts', () => ({
+  transporter: { sendMail: vi.fn() },
+}));
+const sendMailMock = vi.mocked(transporter.sendMail);
 
 function buildUser(overrides: Partial<Record<keyof RegisterInput, unknown>> = {}) {
   return {
@@ -36,6 +42,7 @@ function emailOfLength(length: number) {
 }
 
 beforeEach(async () => {
+  sendMailMock.mockReset();
   await pg.query('TRUNCATE TABLE users CASCADE;');
 });
 
@@ -312,6 +319,26 @@ describe('POST /api/auth/register', () => {
         expect(res.body.user.id).not.toBe(forcedId);
         const user = await UserRepo.findUserById(forcedId);
         expect(user).toBeNull();
+      });
+    });
+
+    describe('email verification list', () => {
+      it('send a list with a verification link to the registered user', async () => {
+        const res = await register(buildUser()).expect(201);
+
+        expect(sendMailMock).toHaveBeenCalledWith(
+          expect.objectContaining({
+            to: res.body.user.email,
+            text: expect.stringMatching(/\/api\/auth\/verify-email\?token=[0-9a-f]{64}/),
+          }),
+        );
+      });
+
+      it('creates a user even though the error occurs when sending the list', async () => {
+        sendMailMock.mockRejectedValueOnce(new Error('Unknown'));
+        await register(buildUser()).expect(500);
+
+        expect(await UserRepo.countUsers()).toBe(1);
       });
     });
   });

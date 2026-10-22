@@ -31,10 +31,10 @@ export async function getGoogleTokens(code: string) {
 
   if (!response.ok) {
     if ('error' in data && data.error === 'invalid_grant') {
-      throw new AppError('INVALID_GRANT', 400, data.error_description);
+      throw new AppError('INVALID_GRANT', data.error_description, 400);
     } else {
       console.error(data, response);
-      throw new AppError('SERVER_ERROR', 502, 'Authorization error');
+      throw new AppError('SERVER_ERROR', 'Authorization error', 502);
     }
   }
 

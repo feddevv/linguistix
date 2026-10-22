@@ -59,6 +59,7 @@ function seedUser(overrides: { googleId?: string; email?: string; password?: str
     lastName: 'Lovelace',
     email: googleProfile.email,
     role: 'student',
+    isVerified: false,
     ...overrides,
   });
 }

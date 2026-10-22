@@ -7,19 +7,40 @@ info:
     HTTP API of the Linguistix platform.
 
     ## Error format
-    Every non-2xx response has the same shape: `{ "message": string }`.
+    Every JSON error response has the same shape:
+    `{ "errorCode": ErrorCode, "message": string }`. `errorCode` is a stable,
+    machine-readable code (see the `ErrorCode` schema); `message` is meant for
+    humans and may change.
+
+    | `errorCode`           | Status | Meaning                                                    |
+    |-----------------------|--------|------------------------------------------------------------|
+    | `VALIDATION_ERROR`    | 400    | Body or query failed validation, or the JSON is malformed  |
+    | `VALIDATION_ERROR`    | 413    | Request body is larger than 100 KB                         |
+    | `INVALID_CREDENTIALS` | 401    | Wrong email or password                                    |
+    | `TOKEN_NOT_FOUND`     | 401    | Refresh token cookie is missing                            |
+    | `INVALID_TOKEN`       | 401    | Refresh token is invalid, expired or already used          |
+    | `USER_NOT_FOUND`      | 404    | The user of the session no longer exists                   |
+    | `EMAIL_IN_USE`        | 409    | A user with this email already exists                      |
+    | `SERVER_ERROR`        | 500    | Unexpected server error                                    |
+
     Validation errors report **only the first** failing rule. Fields are checked
     in the order in which they are listed in each request schema; cross-field
     rules (such as the password confirmation match) run last.
 
+    The Google sign-in endpoints never return JSON errors for OAuth failures.
+    They redirect the browser to the frontend with an `error` query parameter
+    instead (see `GET /api/auth/google/callback`).
+
     ## Authentication
-    `POST /api/auth/login` sets two `HttpOnly` cookies, `accessToken` and
-    `refreshToken`, that hold signed JWTs. Browsers send them automatically on
-    later requests.
+    `POST /api/auth/login` and a successful Google sign-in set two `HttpOnly`
+    cookies, `accessToken` and `refreshToken`, that hold signed JWTs. Browsers
+    send them automatically on later requests.
 
     - `accessToken` lives 15 minutes, `refreshToken` lives 15 days.
-    - Both JWTs carry the same claims: `id`, `email`, `role`, a random `jti`,
-      `iat` and `exp`.
+    - The access token carries the claims `id`, `email`, `role` (`null` for
+      users who signed up with Google and have not picked a role yet), a random
+      `jti`, `iat` and `exp`.
+    - The refresh token carries only a random `jti`, `iat` and `exp`.
     - Every login starts a new session: a SHA-256 hash of its refresh token is
       stored on the server. A user can have several sessions at once (for
       example, on different devices).
@@ -35,7 +56,9 @@ servers:
 
 tags:
   - name: Auth
-    description: Registration and authentication
+    description: Registration and authentication with email and password
+  - name: Google OAuth
+    description: Sign-in with a Google account
 
 paths:
   /api/auth/register:
@@ -73,8 +96,6 @@ paths:
           $ref: '#/components/responses/EmailConflict'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
-        '415':
-          $ref: '#/components/responses/UnsupportedMediaType'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -91,6 +112,8 @@ paths:
           as in `POST /api/auth/register`; only the first error is returned.
         - `email` is lower-cased before lookup, so login is case-insensitive.
           `password` is trimmed before it is compared.
+        - Accounts created through Google sign-in have no password and cannot log
+          in here; they get the same `401` as a wrong password.
         - On success, the response sets two cookies, both `HttpOnly`, `SameSite=Lax`
           and `Path=/`, plus `Secure` when the server runs in production:
           - `accessToken`: JWT valid for 15 minutes (`Max-Age=900`).
@@ -109,8 +132,6 @@ paths:
           $ref: '#/components/responses/InvalidCredentials'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
-        '415':
-          $ref: '#/components/responses/UnsupportedMediaType'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -128,21 +149,21 @@ paths:
         - The refresh token is read **only** from the `refreshToken` cookie. A token
           sent in the request body or in the `Authorization` header is ignored.
         - No request body is needed, and any body is ignored. A body that is sent
-          as JSON is still parsed, so it must be valid JSON, UTF-8 encoded and at
-          most 100 KB (see the `400`, `413` and `415` responses).
+          as JSON is still parsed, so it must be valid JSON and at most 100 KB
+          (see the `400` and `413` responses).
         - The refresh token is accepted only if its JWT signature and expiry are
           valid **and** its session is stored on the server and has not expired.
           An access token cannot be used as a refresh token.
         - The new tokens are built from the current user record, so changes to the
-          user (for example, the role) are applied.
+          user (for example, the role or email) are applied.
         - The refresh token is **rotated**: the presented token is replaced by the
           new one and cannot be used again. If the same token is sent in two
           concurrent requests, only one of them succeeds. Other sessions of the
           user are not affected.
         - On success, the response sets the same two cookies as
           `POST /api/auth/login`.
-        - On `401` or `500`, both `accessToken` and `refreshToken` cookies are
-          cleared.
+        - On `401`, `404` or `500`, both `accessToken` and `refreshToken` cookies
+          are cleared.
       responses:
         '200':
           $ref: '#/components/responses/RefreshSuccess'
@@ -150,10 +171,10 @@ paths:
           $ref: '#/components/responses/MalformedJsonBody'
         '401':
           $ref: '#/components/responses/RefreshUnauthorized'
+        '404':
+          $ref: '#/components/responses/RefreshUserNotFound'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
-        '415':
-          $ref: '#/components/responses/UnsupportedMediaType'
         '500':
           $ref: '#/components/responses/RefreshInternalServerError'
 
@@ -172,8 +193,8 @@ paths:
           sent in the request body or in the `Authorization` header is ignored. The
           `accessToken` cookie is not needed and is not checked.
         - No request body is needed, and any body is ignored. A body that is sent
-          as JSON is still parsed, so it must be valid JSON, UTF-8 encoded and at
-          most 100 KB (see the `400`, `413` and `415` responses).
+          as JSON is still parsed, so it must be valid JSON and at most 100 KB
+          (see the `400` and `413` responses).
         - The session whose stored hash matches the refresh token is deleted, so
           the token can no longer be used with `POST /api/auth/refresh`. The JWT is
           **not** verified first: a session is ended even if its token has already
@@ -192,10 +213,159 @@ paths:
           $ref: '#/components/responses/MalformedJsonBody'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
-        '415':
-          $ref: '#/components/responses/UnsupportedMediaType'
         '500':
           $ref: '#/components/responses/LogoutInternalServerError'
+
+  /api/auth/google:
+    get:
+      tags: [Google OAuth]
+      operationId: googleSignIn
+      security: []
+      summary: Start Google sign-in
+      description: |
+        Starts the Google OAuth 2.0 authorization code flow. Open this URL in the
+        browser (by navigation, not `fetch`); it redirects to the Google consent
+        screen.
+
+        - A random `state` (32 bytes, 64 hex characters) is generated on every
+          request. It is sent to Google in the redirect URL and stored in the
+          `google-oauth-state` cookie (`HttpOnly`, `SameSite=Lax`, `Path=/`,
+          `Max-Age=600`, plus `Secure` in production).
+        - The redirect URL is `https://accounts.google.com/o/oauth2/v2/auth` with
+          the query parameters `response_type=code`, `client_id`, `redirect_uri`
+          (the server's `GOOGLE_REDIRECT_URI`, which points to
+          `GET /api/auth/google/callback`), `scope=openid email profile`, `state`
+          and `prompt=consent`.
+        - After the user consents or cancels, Google redirects the browser to
+          `GET /api/auth/google/callback`.
+      responses:
+        '302':
+          description: Redirect to the Google consent screen.
+          headers:
+            Location:
+              description: Google authorization URL.
+              schema:
+                type: string
+                format: uri
+              example: https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=1234.apps.googleusercontent.com&redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fapi%2Fauth%2Fgoogle%2Fcallback&scope=openid+email+profile&state=9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08&prompt=consent
+            Set-Cookie:
+              description: The `google-oauth-state` cookie, valid for 10 minutes.
+              schema:
+                type: string
+              example: google-oauth-state=9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08; Max-Age=600; Path=/; HttpOnly; SameSite=Lax
+
+  /api/auth/google/callback:
+    get:
+      tags: [Google OAuth]
+      operationId: googleCallback
+      security:
+        - googleOAuthStateCookie: []
+      summary: Finish Google sign-in
+      description: |
+        Redirect target that Google calls after the consent screen. It is not
+        meant to be called directly. Except for a malformed query (see `400`),
+        it always answers with a `302` redirect to the frontend (`FRONTEND_URL`).
+
+        Steps, in order:
+
+        1. If Google sent `error`, the browser is redirected with
+           `error=CANCELED_AUTH` when it is `access_denied` (the user cancelled),
+           and with `error=SERVER_ERROR` otherwise. The state is **not** checked
+           and the state cookie is **not** cleared.
+        2. The `state` query parameter must equal the `google-oauth-state`
+           cookie. If either is missing or they differ, the browser is redirected
+           with `error=INVALID_STATE` and the state cookie is not cleared.
+        3. The state cookie is cleared.
+        4. `code` is exchanged with Google for tokens (10 second timeout). If
+           Google rejects the code as `invalid_grant` (for example, it was
+           already used, has expired or is malformed), the browser is redirected
+           with `error=INVALID_GRANT`; any other failure, such as another Google
+           error, a timeout or a network error, gives `error=SERVER_ERROR`.
+           A missing `code` is not rejected up front: it is sent to Google as
+           the literal string `undefined`, which Google normally rejects as
+           `invalid_grant`.
+        5. If the Google email is not verified, the browser is redirected with
+           `error=EMAIL_UNVERIFIED`.
+        6. The user is looked up first by Google account ID (`sub`) and then by
+           email:
+           - **No user found:** a new user is created with the Google email,
+             `firstName` = Google `given_name` (or the full `name` when missing),
+             `lastName` = Google `family_name` (or an empty string), no password
+             and `role: null`. Such accounts can only sign in with Google.
+           - **User found by email but not linked to this Google account** (for
+             example an email/password account): accounts are **not** linked; the
+             browser is redirected with `error=EMAIL_IN_USE`.
+           - **User linked to this Google account whose Google email changed:**
+             the stored email is updated, unless another user already has the new
+             email, in which case the browser is redirected with
+             `error=EMAIL_IN_USE`. The tokens issued by this sign-in still carry
+             the previous email; it is updated on the next
+             `POST /api/auth/refresh`.
+        7. A new session is started, the `accessToken` and `refreshToken`
+           cookies are set exactly as in `POST /api/auth/login`, and the browser
+           is redirected to `FRONTEND_URL` without an `error` parameter.
+
+        The email from Google is stored as Google returns it; it is not
+        lower-cased.
+      parameters:
+        - name: code
+          in: query
+          required: false
+          description: Authorization code from Google. Present when the user consented.
+          schema:
+            type: string
+          example: 4/0AVG7fiQ-example-code
+        - name: state
+          in: query
+          required: false
+          description: The `state` value sent to Google by `GET /api/auth/google`.
+          schema:
+            type: string
+          example: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+        - name: error
+          in: query
+          required: false
+          description: OAuth error from Google, for example `access_denied` when the user cancelled.
+          schema:
+            type: string
+          example: access_denied
+      responses:
+        '302':
+          description: |
+            Redirect to the frontend. On success, the session cookies are set and
+            the URL has no `error` parameter. On failure, no session cookies are
+            set and the URL carries `error=<OAuthRedirectErrorCode>`.
+          headers:
+            Location:
+              description: |
+                `FRONTEND_URL` on success, or `FRONTEND_URL` with an `error` query
+                parameter whose value is an `OAuthRedirectErrorCode`.
+              schema:
+                type: string
+                format: uri
+              examples:
+                success:
+                  summary: Signed in
+                  value: http://localhost:5173/
+                cancelled:
+                  summary: User cancelled on the consent screen
+                  value: http://localhost:5173/?error=CANCELED_AUTH
+                emailInUse:
+                  summary: An email/password account already uses this email
+                  value: http://localhost:5173/?error=EMAIL_IN_USE
+            Set-Cookie:
+              description: |
+                On success: the `accessToken` and `refreshToken` cookies (as in
+                `POST /api/auth/login`) and the cleared `google-oauth-state`
+                cookie. After the state check passes, the `google-oauth-state`
+                cookie is cleared even if sign-in then fails.
+              schema:
+                type: string
+              example: accessToken=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...; Max-Age=900; Path=/; HttpOnly; SameSite=Lax
+        '400':
+          $ref: '#/components/responses/OAuthQueryBadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
 components:
   securitySchemes:
@@ -204,16 +374,35 @@ components:
       in: cookie
       name: refreshToken
       description: |
-        Refresh token JWT set by `POST /api/auth/login` or `POST /api/auth/refresh`.
-        The cookie is `HttpOnly`, so browsers send it automatically. It is
-        required by `POST /api/auth/refresh` and optional for
-        `POST /api/auth/logout`.
+        Refresh token JWT set by `POST /api/auth/login`, `POST /api/auth/refresh`
+        or a successful Google sign-in. The cookie is `HttpOnly`, so browsers send
+        it automatically. It is required by `POST /api/auth/refresh` and optional
+        for `POST /api/auth/logout`.
+
+    googleOAuthStateCookie:
+      type: apiKey
+      in: cookie
+      name: google-oauth-state
+      description: |
+        Random OAuth `state` set by `GET /api/auth/google` for 10 minutes. It
+        must match the `state` query parameter of
+        `GET /api/auth/google/callback`.
 
   schemas:
     Role:
       type: string
       description: User role. Case-sensitive.
       enum: [student, teacher]
+      example: student
+
+    NullableRole:
+      type: string
+      description: |
+        User role, or `null` for a user who signed up with Google and has not
+        picked a role yet. `POST /api/auth/register` and `POST /api/auth/login`
+        always return a non-null role.
+      enum: [student, teacher, null]
+      nullable: true
       example: student
 
     UserId:
@@ -317,7 +506,7 @@ components:
         email:
           $ref: '#/components/schemas/Email'
         role:
-          $ref: '#/components/schemas/Role'
+          $ref: '#/components/schemas/NullableRole'
 
     UserResponse:
       type: object
@@ -344,12 +533,56 @@ components:
           type: string
           example: Refreshed
 
+    ErrorCode:
+      type: string
+      description: |
+        Machine-readable error code. Every value of the shared `ErrorCode` type is
+        listed; `ACCOUNT_IN_USE` is reserved and not returned yet.
+      enum:
+        - SERVER_ERROR
+        - EMAIL_IN_USE
+        - INVALID_CREDENTIALS
+        - TOKEN_NOT_FOUND
+        - INVALID_TOKEN
+        - USER_NOT_FOUND
+        - EMAIL_UNVERIFIED
+        - ACCOUNT_IN_USE
+        - CANCELED_AUTH
+        - INVALID_STATE
+        - INVALID_GRANT
+        - VALIDATION_ERROR
+      example: EMAIL_IN_USE
+
+    OAuthRedirectErrorCode:
+      type: string
+      description: |
+        Value of the `error` query parameter that `GET /api/auth/google/callback`
+        adds to the frontend URL when Google sign-in fails.
+
+        - `CANCELED_AUTH`: the user cancelled on the Google consent screen.
+        - `INVALID_STATE`: the `state` is missing or does not match the cookie
+          (for example, the 10-minute cookie expired).
+        - `INVALID_GRANT`: Google rejected the authorization code.
+        - `EMAIL_UNVERIFIED`: the Google account email is not verified.
+        - `EMAIL_IN_USE`: another account already uses the Google email.
+        - `SERVER_ERROR`: any other failure, including other Google errors.
+      enum:
+        - CANCELED_AUTH
+        - INVALID_STATE
+        - INVALID_GRANT
+        - EMAIL_UNVERIFIED
+        - EMAIL_IN_USE
+        - SERVER_ERROR
+      example: CANCELED_AUTH
+
     Error:
       type: object
       description: Error response returned by the global error handler.
-      required: [message]
+      required: [errorCode, message]
       additionalProperties: false
       properties:
+        errorCode:
+          $ref: '#/components/schemas/ErrorCode'
         message:
           type: string
           description: Message that describes the error and can be shown to a user.
@@ -358,7 +591,7 @@ components:
   requestBodies:
     RegisterRequest:
       required: true
-      description: New user data. Must be a JSON object, UTF-8 encoded, at most 100 KB.
+      description: New user data. Must be a JSON object, at most 100 KB.
       content:
         application/json:
           schema:
@@ -385,7 +618,7 @@ components:
 
     LoginRequest:
       required: true
-      description: User credentials. Must be a JSON object, UTF-8 encoded, at most 100 KB.
+      description: User credentials. Must be a JSON object, at most 100 KB.
       content:
         application/json:
           schema:
@@ -487,7 +720,8 @@ components:
     BadRequest:
       description: |
         The request body is missing, is not valid JSON, is not a JSON object, or
-        fails validation. Only the first validation error is returned.
+        fails validation. Only the first validation error is returned. The
+        `errorCode` is always `VALIDATION_ERROR`.
       content:
         application/json:
           schema:
@@ -496,108 +730,134 @@ components:
             missingBody:
               summary: Body is missing or not JSON (for example, wrong Content-Type)
               value:
+                errorCode: VALIDATION_ERROR
                 message: 'Invalid input: expected object, received undefined'
             bodyIsArray:
               summary: Body is a JSON array instead of an object
               value:
+                errorCode: VALIDATION_ERROR
                 message: 'Invalid input: expected object, received array'
             malformedJson:
-              summary: Malformed JSON (trailing comma)
+              summary: Malformed JSON, or a top-level JSON primitive (for example `"abc"`)
               value:
-                message: Expected double-quoted property name in JSON at position 20 (line 1 column 21)
+                errorCode: VALIDATION_ERROR
+                message: Invalid JSON payload passed
             firstNameRequired:
               summary: firstName is missing, null or another falsy value (for example `0`)
               value:
+                errorCode: VALIDATION_ERROR
                 message: First name is required
             firstNameNotString:
               summary: firstName is not a string
               value:
+                errorCode: VALIDATION_ERROR
                 message: First name should be a string
             firstNameTooShort:
               summary: firstName is shorter than 2 characters after trimming
               value:
+                errorCode: VALIDATION_ERROR
                 message: First name should be at least 2 characters long
             firstNameTooLong:
               summary: firstName is longer than 100 characters after trimming
               value:
+                errorCode: VALIDATION_ERROR
                 message: First name should not exceed 100 characters
             lastNameRequired:
               summary: lastName is missing, null or another falsy value (for example `0`)
               value:
+                errorCode: VALIDATION_ERROR
                 message: Last name is required
             lastNameNotString:
               summary: lastName is not a string
               value:
+                errorCode: VALIDATION_ERROR
                 message: Last name should be a string
             lastNameTooShort:
               summary: lastName is shorter than 2 characters after trimming
               value:
+                errorCode: VALIDATION_ERROR
                 message: Last name should be at least 2 characters long
             lastNameTooLong:
               summary: lastName is longer than 100 characters after trimming
               value:
+                errorCode: VALIDATION_ERROR
                 message: Last name should not exceed 100 characters
             emailRequired:
               summary: email is missing, null or an empty string
               value:
+                errorCode: VALIDATION_ERROR
                 message: Email is required
             emailInvalid:
               summary: email is not a string or is not a valid address
               value:
+                errorCode: VALIDATION_ERROR
                 message: Invalid email format
             emailTooLong:
               summary: email is longer than 255 characters
               value:
+                errorCode: VALIDATION_ERROR
                 message: Email should not exceed 255 characters
             passwordRequired:
               summary: password is missing, null, another falsy value (for example `0`), or empty after trimming
               value:
+                errorCode: VALIDATION_ERROR
                 message: Password is required
             passwordNotString:
               summary: password is not a string
               value:
+                errorCode: VALIDATION_ERROR
                 message: Password should be a string
             passwordTooShort:
               summary: password is shorter than 6 characters after trimming
               value:
+                errorCode: VALIDATION_ERROR
                 message: Password should be at least 6 characters long
             passwordTooLong:
               summary: password is longer than 255 characters after trimming
               value:
+                errorCode: VALIDATION_ERROR
                 message: Password should not exceed 255 characters
             confirmPasswordRequired:
               summary: confirmPassword is missing, null or another falsy value (for example `0`)
               value:
+                errorCode: VALIDATION_ERROR
                 message: Password confirmation is required
             confirmPasswordNotString:
               summary: confirmPassword is not a string
               value:
+                errorCode: VALIDATION_ERROR
                 message: Password confirmation should be a string
             confirmPasswordTooShort:
               summary: confirmPassword is shorter than 6 characters after trimming
               value:
+                errorCode: VALIDATION_ERROR
                 message: Password confirmation should be at least 6 characters long
             confirmPasswordTooLong:
               summary: confirmPassword is longer than 255 characters after trimming
               value:
+                errorCode: VALIDATION_ERROR
                 message: Password confirmation should not exceed 255 characters
             roleRequired:
               summary: role is missing, null or an empty string
               value:
+                errorCode: VALIDATION_ERROR
                 message: Role is required
             roleInvalid:
               summary: role is not `student` or `teacher` (case-sensitive)
               value:
+                errorCode: VALIDATION_ERROR
                 message: Role 'admin' doesn't exist
             passwordsDontMatch:
               summary: confirmPassword differs from password after trimming (checked last)
               value:
+                errorCode: VALIDATION_ERROR
                 message: Passwords don't match
 
     LoginBadRequest:
       description: |
         The request body is missing, is not valid JSON, is not a JSON object, or
-        fails validation. Only the first validation error is returned.
+        fails validation. Only the first validation error is returned. The
+        `errorCode` is always `VALIDATION_ERROR`.
       content:
         application/json:
           schema:
@@ -606,46 +866,73 @@ components:
             missingBody:
               summary: Body is missing or not JSON (for example, wrong Content-Type)
               value:
+                errorCode: VALIDATION_ERROR
                 message: 'Invalid input: expected object, received undefined'
+            malformedJson:
+              summary: Malformed JSON, or a top-level JSON primitive (for example `"abc"`)
+              value:
+                errorCode: VALIDATION_ERROR
+                message: Invalid JSON payload passed
             emailRequired:
               summary: email is missing, null or an empty string
               value:
+                errorCode: VALIDATION_ERROR
                 message: Email is required
             emailInvalid:
               summary: email is not a string or is not a valid address
               value:
+                errorCode: VALIDATION_ERROR
                 message: Invalid email format
             emailTooLong:
               summary: email is longer than 255 characters
               value:
+                errorCode: VALIDATION_ERROR
                 message: Email should not exceed 255 characters
             passwordRequired:
               summary: password is missing, null, another falsy value (for example `0`), or empty after trimming
               value:
+                errorCode: VALIDATION_ERROR
                 message: Password is required
             passwordNotString:
               summary: password is not a string
               value:
+                errorCode: VALIDATION_ERROR
                 message: Password should be a string
             passwordTooShort:
               summary: password is shorter than 6 characters after trimming
               value:
+                errorCode: VALIDATION_ERROR
                 message: Password should be at least 6 characters long
             passwordTooLong:
               summary: password is longer than 255 characters after trimming
               value:
+                errorCode: VALIDATION_ERROR
                 message: Password should not exceed 255 characters
 
     MalformedJsonBody:
       description: |
-        The request has a JSON `Content-Type` but its body is not valid JSON. The
-        session cookies are not changed.
+        The request has a JSON `Content-Type` but its body is not valid JSON or
+        is a top-level JSON primitive. The session cookies are not changed.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
           example:
-            message: Unexpected end of JSON input
+            errorCode: VALIDATION_ERROR
+            message: Invalid JSON payload passed
+
+    OAuthQueryBadRequest:
+      description: |
+        A query parameter is not a single string, for example because it is
+        repeated (`?state=a&state=b`). No redirect happens and the cookies are
+        not changed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            errorCode: VALIDATION_ERROR
+            message: 'Invalid input: expected string, received array'
 
     RefreshUnauthorized:
       description: |
@@ -670,6 +957,7 @@ components:
                 The refreshToken cookie is missing, empty, or not a string (for example
                 a `j:`-prefixed cookie that is parsed as JSON)
               value:
+                errorCode: TOKEN_NOT_FOUND
                 message: Refresh token is not attached
             invalidOrExpired:
               summary: |
@@ -677,11 +965,29 @@ components:
                 is not stored, has expired or was ended by `POST /api/auth/logout`; or
                 it was already rotated
               value:
+                errorCode: INVALID_TOKEN
                 message: Invalid or expired token
-            userNotFound:
-              summary: The user of the session no longer exists
-              value:
-                message: Current user doesn't exist
+
+    RefreshUserNotFound:
+      description: |
+        The session is valid but its user no longer exists. Both session cookies
+        are cleared.
+      headers:
+        Set-Cookie:
+          description: |
+            Two cookies are cleared, one per `Set-Cookie` header: `accessToken`
+            and `refreshToken`, each with an empty value and an expiry date in
+            the past.
+          schema:
+            type: string
+          example: refreshToken=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            errorCode: USER_NOT_FOUND
+            message: Current user doesn't exist
 
     EmailConflict:
       description: A user with this email (case-insensitive) already exists.
@@ -690,17 +996,20 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
           example:
+            errorCode: EMAIL_IN_USE
             message: User with this email already exists
 
     InvalidCredentials:
       description: |
-        No user has this email, or the password is wrong. The same message is
-        returned in both cases.
+        No user has this email, the password is wrong, or the account has no
+        password (it was created through Google sign-in). The same message is
+        returned in all cases.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
           example:
+            errorCode: INVALID_CREDENTIALS
             message: Email or password is incorrect
 
     PayloadTooLarge:
@@ -710,39 +1019,29 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
           example:
-            message: request entity too large
-
-    UnsupportedMediaType:
-      description: The JSON body uses a non-UTF charset or an unsupported Content-Encoding.
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-          examples:
-            unsupportedCharset:
-              summary: Charset other than UTF-8/16/32
-              value:
-                message: unsupported charset "ISO-8859-1"
-            unsupportedEncoding:
-              summary: Unsupported Content-Encoding
-              value:
-                message: unsupported content encoding "compress"
+            errorCode: VALIDATION_ERROR
+            message: Payload too large
 
     InternalServerError:
       description: |
         Unexpected server error, such as the database being unavailable or the
-        token signing key not being configured.
+        server not being configured (for example, a missing token signing key or
+        `FRONTEND_URL`). A JSON body with a charset other than UTF-8/16/32 or an
+        unsupported `Content-Encoding` also gets this response.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
           example:
+            errorCode: SERVER_ERROR
             message: Internal server error!
 
     RefreshInternalServerError:
       description: |
-        Unexpected server error, such as the database being unavailable. Both
-        session cookies are cleared.
+        Unexpected server error, such as the database being unavailable. A JSON
+        body with an unsupported charset or `Content-Encoding` also gets this
+        response. Both session cookies are cleared, except for an unsupported
+        body, which is rejected before the cookies are read.
       headers:
         Set-Cookie:
           description: |
@@ -757,13 +1056,16 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
           example:
+            errorCode: SERVER_ERROR
             message: Internal server error!
 
     LogoutInternalServerError:
       description: |
         Unexpected server error, such as the database being unavailable. Both
         session cookies are still cleared, but the stored session may not have
-        been deleted.
+        been deleted. A JSON body with an unsupported charset or
+        `Content-Encoding` also gets this response, but then the cookies are
+        not cleared.
       headers:
         Set-Cookie:
           description: |
@@ -778,4 +1080,5 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
           example:
+            errorCode: SERVER_ERROR
             message: Internal server error!

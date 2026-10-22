@@ -1,4 +1,4 @@
-import { describe, it, beforeEach, afterAll, expect } from 'vitest';
+import { describe, it, beforeEach, afterAll, expect, vi } from 'vitest';
 import request, { type Response } from 'supertest';
 import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { app } from '../../../app.js';
@@ -12,6 +12,10 @@ const INVALID_CREDENTIALS = 'Email or password is incorrect';
 
 const ACCESS_TOKEN_TTL = 15 * 60;
 const REFRESH_TOKEN_TTL = 15 * 24 * 60 * 60;
+
+vi.mock('../../../lib/transporter.ts', () => ({
+  transporter: { sendMail: () => {} },
+}));
 
 function buildCredentials(overrides: Partial<Record<keyof LoginInput, unknown>> = {}) {
   return {

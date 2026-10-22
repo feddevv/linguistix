@@ -6,6 +6,7 @@ export const ERROR_STATUS_MAP: Record<ErrorCode, number> = {
   INVALID_CREDENTIALS: 401,
   TOKEN_NOT_FOUND: 401,
   INVALID_TOKEN: 401,
+  INVALID_VERIFICATION_TOKEN: 400,
   USER_NOT_FOUND: 404,
   EMAIL_UNVERIFIED: 403,
   ACCOUNT_IN_USE: 409,
@@ -13,6 +14,7 @@ export const ERROR_STATUS_MAP: Record<ErrorCode, number> = {
   INVALID_STATE: 400,
   INVALID_GRANT: 400,
   VALIDATION_ERROR: 422,
+  EMAIL_ALREADY_VERIFIED: 409,
 };
 
 export class AppError extends Error {

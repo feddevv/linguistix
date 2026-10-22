@@ -1,9 +1,10 @@
 import type { Role } from '@repo/shared';
 import { pg } from '../../db/pg.js';
-import { toUserDomain } from '../../utils/mappers.js';
-import { DatabaseError } from 'pg';
+import { toEmailVerificationTokenDto, toUserDomain } from '../../utils/mappers.js';
+import { DatabaseError, type PoolClient } from 'pg';
 import { AppError } from '../../errors/AppError.js';
 import type { UserRow } from './user.types.js';
+import type { EmailVerificationTokenRow } from '../auth/auth.types.js';
 
 interface CreateUserParameters {
   googleId?: string;
@@ -12,19 +13,39 @@ interface CreateUserParameters {
   password?: string;
   email: string;
   role: Role | null;
+  isVerified: boolean;
+  client?: PoolClient;
 }
 
 class User {
-  async create({ googleId, firstName, lastName, email, password, role }: CreateUserParameters) {
+  async create({
+    googleId,
+    firstName,
+    lastName,
+    email,
+    password,
+    role,
+    isVerified,
+    client,
+  }: CreateUserParameters) {
+    const executor = client ?? pg;
     try {
-      const user = await pg.query<UserRow>(
+      const user = await executor.query<UserRow>(
         `
-				INSERT INTO users (google_id, first_name, last_name, password, email, role)
-				VALUES ($1, $2, $3, $4, $5, $6)
+				INSERT INTO users (google_id, first_name, last_name, password, email, role, is_verified)
+				VALUES ($1, $2, $3, $4, $5, $6, $7)
         ON CONFLICT (google_id) DO UPDATE SET email = EXCLUDED.email
         RETURNING *;
 			`,
-        [googleId ?? null, firstName, lastName, password ?? null, email, role ?? null],
+        [
+          googleId ?? null,
+          firstName,
+          lastName,
+          password ?? null,
+          email,
+          role ?? null,
+          isVerified ?? null,
+        ],
       );
 
       return toUserDomain(user.rows[0]!);
@@ -80,6 +101,16 @@ class User {
 
   async updateUserEmail(newEmail: string, userId: string) {
     const user = await pg.query(`UPDATE users SET email = $1 WHERE id = $2;`, [newEmail, userId]);
+
+    return user.rowCount;
+  }
+
+  async updateIsVerified(isVerified: boolean, userId: string, client?: PoolClient) {
+    const executor = client ?? pg;
+    const user = await executor.query(`UPDATE users SET is_verified = $1 WHERE id = $2;`, [
+      isVerified,
+      userId,
+    ]);
 
     return user.rowCount;
   }

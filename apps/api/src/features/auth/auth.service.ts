@@ -1,4 +1,4 @@
-import { RefreshTokenRepo } from './auth.repository.js';
+import { EmailVerificationTokenRepo, RefreshTokenRepo } from './auth.repository.js';
 import type { LoginInput, RegisterInput } from '@repo/shared';
 import { compare, hash } from 'bcrypt';
 import { AppError } from '../../errors/AppError.js';
@@ -8,6 +8,8 @@ import { UserRepo } from '../user/user.repository.js';
 import { jwtDecode } from 'jwt-decode';
 import { getGoogleTokens } from '../google/google.service.js';
 import crypto from 'crypto';
+import { pg } from '../../db/pg.js';
+import { transporter } from '../../lib/transporter.js';
 
 function issueSession(user: JwtPayload, secretKey = process.env.SECRET_KEY!) {
   const accessToken = jwt.sign({ ...user, jti: crypto.randomUUID() }, secretKey, {
@@ -30,15 +32,47 @@ export async function register({ firstName, lastName, password, email, role }: R
   const sha256hash = hashString(password);
   const passwordHash = await hash(sha256hash, 10);
 
-  const user = await UserRepo.create({
-    firstName,
-    lastName,
-    password: passwordHash,
-    email,
-    role,
-  });
+  const client = await pg.connect();
+  try {
+    await client.query('BEGIN');
 
-  return user;
+    const user = await UserRepo.create({
+      firstName,
+      lastName,
+      password: passwordHash,
+      email,
+      role,
+      isVerified: false,
+      client,
+    });
+
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 1);
+
+    await EmailVerificationTokenRepo.createToken({
+      tokenHash: hashString(verificationToken),
+      userId: user.id,
+      expiresAt,
+      client,
+    });
+
+    await client.query('COMMIT');
+
+    await transporter.sendMail({
+      from: 'linguistix@lang.com',
+      to: user.email,
+      subject: 'Linguistix email verification',
+      text: `Verify your email ${process.env.BACKEND_URL}/api/auth/verify-email?token=${verificationToken}`,
+    });
+
+    return user;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 export async function login({ email, password }: LoginInput) {
@@ -158,6 +192,7 @@ export async function handleGoogleCallback(code: string) {
       lastName: decodedJWTPayload.family_name ?? '',
       googleId: decodedJWTPayload.sub!,
       role: null,
+      isVerified: true,
     });
   } else if (!user.googleId || user.googleId !== decodedJWTPayload.sub!) {
     throw new AppError(
@@ -191,4 +226,37 @@ export async function handleGoogleCallback(code: string) {
     accessToken,
     refreshToken,
   };
+}
+
+export async function verifyEmail(token: string) {
+  const hashedToken = hashString(token);
+
+  const client = await pg.connect();
+  try {
+    await client.query('BEGIN');
+
+    const consumed = await EmailVerificationTokenRepo.consumeToken(hashedToken, client);
+
+    if (!consumed)
+      throw new AppError(
+        'INVALID_VERIFICATION_TOKEN',
+        'Provided email verification token is invalid or has expired',
+      );
+    else {
+      const user = await UserRepo.findUserById(consumed.userId);
+
+      if (!user) throw new AppError('USER_NOT_FOUND', "This user doesn't exist");
+      else if (user.isVerified)
+        throw new AppError('EMAIL_ALREADY_VERIFIED', 'This email is already verified');
+    }
+
+    await UserRepo.updateIsVerified(true, consumed.userId, client);
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
