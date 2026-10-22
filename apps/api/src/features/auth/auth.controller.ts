@@ -7,7 +7,11 @@ import type {
 } from '@repo/shared';
 import * as authService from './auth.service.js';
 import { deleteJWTCookie, setJWTCookie } from './utils/cookies.js';
-import type { OAuthQueryString, VerifyEmailQueryString } from './auth.schemas.js';
+import type {
+  OAuthQueryString,
+  ResendVerificationBody,
+  VerifyEmailQueryString,
+} from './auth.schemas.js';
 import { AppError } from '../../errors/AppError.js';
 import type { ErrorCode } from '@repo/shared';
 
@@ -162,4 +166,11 @@ export async function verifyEmail(req: Request, res: Response) {
   }
 }
 
-export async function resendVerification(req: Request, res: Response) {}
+export async function resendVerification(
+  req: Request<unknown, unknown, ResendVerificationBody>,
+  res: Response,
+) {
+  const message = await authService.resendVerification(req.body.email);
+
+  res.json({ message });
+}

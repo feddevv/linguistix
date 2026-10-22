@@ -2,7 +2,7 @@ import { Router } from 'express';
 import * as authController from './auth.controller.js';
 import { validate } from '../../middlewares/validator.js';
 import { loginSchema, registerSchema } from '@repo/shared';
-import { oauthSchema, verifyEmailSchema } from './auth.schemas.js';
+import { oauthSchema, resendVerificationSchema, verifyEmailSchema } from './auth.schemas.js';
 
 export const router: Router = Router();
 
@@ -22,4 +22,8 @@ router.get(
   authController.verifyEmail,
 );
 
-router.post('/auth/resend-verification', authController.resendVerification);
+router.post(
+  '/auth/resend-verification',
+  validate({ body: resendVerificationSchema }),
+  authController.resendVerification,
+);
