@@ -242,6 +242,9 @@ export async function verifyEmail(token: string) {
         'INVALID_VERIFICATION_TOKEN',
         'Provided email verification token is invalid or has expired',
       );
+    else if ((await UserRepo.findUserById(consumed.userId))?.isVerified) {
+      throw new AppError('EMAIL_ALREADY_VERIFIED', 'This email is already verified');
+    }
 
     await UserRepo.updateIsVerified(true, consumed.userId, client);
 
