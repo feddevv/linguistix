@@ -333,6 +333,13 @@ describe('POST /api/auth/register', () => {
           }),
         );
       });
+
+      it('creates a user even though the error occurs when sending the list', async () => {
+        sendMailMock.mockRejectedValueOnce(new Error('Unknown'));
+        await register(buildUser()).expect(500);
+
+        expect(await UserRepo.countUsers()).toBe(1);
+      });
     });
   });
 });
