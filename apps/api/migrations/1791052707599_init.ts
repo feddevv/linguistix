@@ -106,7 +106,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         token_hash TEXT NOT NULL UNIQUE,
         expires_at TIMESTAMP NOT NULL,
         used_at TIMESTAMP,
-        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE UNIQUE
       );
     `,
   );
