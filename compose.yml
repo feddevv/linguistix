@@ -18,6 +18,17 @@ services:
       - pgdata:/var/lib/postgresql
       - ./init-test-db.sh:/docker-entrypoint-initdb.d/init-test-db.sh
 
+  redis:
+    image: redis:latest
+    restart: unless-stopped
+    container_name: redis
+    ports:
+      - '${REDIS_PORT:-6739}:6739'
+    volumes:
+      - redis-data:/data
+    environment:
+      - REDIS_ARGS=${REDIS_ARGS}
+
   api:
     build:
       context: .
@@ -33,3 +44,4 @@ services:
 
 volumes:
   pgdata:
+  redis-data:
