@@ -262,27 +262,25 @@ export async function verifyEmail(token: string) {
 }
 
 export async function resendVerification(email: string) {
+  const message =
+    "If an account with this email exists and isn't verified yet, we've sent a new verification link.";
   const user = await UserRepo.findUserByEmail(email);
 
-  if (!user) throw new AppError('USER_NOT_FOUND', "This user doesn't exist");
-  else if (user?.isVerified) return;
+  if (!user) return message;
+  else if (user?.isVerified) return message;
 
   const token = crypto.randomBytes(32).toString('hex');
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 1);
 
-  const rotated = await EmailVerificationTokenRepo.rotateToken(
-    user.id,
-    hashString(token),
-    expiresAt,
-  );
+  await EmailVerificationTokenRepo.rotateToken(user.id, hashString(token), expiresAt);
 
-  transporter.sendMail({
+  await transporter.sendMail({
     from: 'linguistix@lang.com',
     to: user.email,
     subject: 'Linguistix email verification',
     text: `Verify your email ${process.env.BACKEND_URL}/api/auth/verify-email?token=${token}`,
   });
 
-  return rotated;
+  return message;
 }
