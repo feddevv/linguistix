@@ -1,5 +1,5 @@
 import type { PoolClient } from 'pg';
-import { pg } from '../../db/pg.js';
+import { pg } from '../../lib/pg.js';
 import {
   toEmailVerificationTokenDto,
   toRefreshTokenDomain,

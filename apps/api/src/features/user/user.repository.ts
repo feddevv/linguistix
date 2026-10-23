@@ -1,5 +1,5 @@
 import type { Role } from '@repo/shared';
-import { pg } from '../../db/pg.js';
+import { pg } from '../../lib/pg.js';
 import { toEmailVerificationTokenDto, toUserDomain } from '../../utils/mappers.js';
 import { DatabaseError, type PoolClient } from 'pg';
 import { AppError } from '../../errors/AppError.js';

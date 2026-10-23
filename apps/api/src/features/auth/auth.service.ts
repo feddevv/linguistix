@@ -8,7 +8,7 @@ import { UserRepo } from '../user/user.repository.js';
 import { jwtDecode } from 'jwt-decode';
 import { getGoogleTokens } from '../google/google.service.js';
 import crypto from 'crypto';
-import { pg } from '../../db/pg.js';
+import { pg } from '../../lib/pg.js';
 import { transporter } from '../../lib/transporter.js';
 
 function issueSession(user: JwtPayload, secretKey = process.env.SECRET_KEY!) {

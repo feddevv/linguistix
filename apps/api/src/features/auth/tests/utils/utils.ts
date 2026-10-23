@@ -1,6 +1,6 @@
 import { hash } from 'bcrypt';
 import { hashString } from '../../utils/hashing.js';
-import { pg } from '../../../../db/pg.js';
+import { pg } from '../../../../lib/pg.js';
 import { type Response } from 'supertest';
 import request from 'supertest';
 import { app } from '../../../../app.js';
