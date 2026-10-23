@@ -9,7 +9,7 @@ import { client } from '../../lib/redis.js';
 
 export const router: Router = Router();
 
-const resendLimiter = rateLimit({
+const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 5,
   standardHeaders: 'draft-8',
@@ -31,13 +31,14 @@ router.get(
 );
 router.get(
   '/auth/verify-email',
+  limiter,
   validate({ query: verifyEmailSchema }),
   authController.verifyEmail,
 );
 
 router.post(
   '/auth/resend-verification',
-  resendLimiter,
+  limiter,
   validate({ body: resendVerificationSchema }),
   authController.resendVerification,
 );
