@@ -27,9 +27,25 @@ info:
     in the order in which they are listed in each request schema; cross-field
     rules (such as the password confirmation match) run last.
 
-    The Google sign-in endpoints never return JSON errors for OAuth failures.
-    They redirect the browser to the frontend with an `error` query parameter
-    instead (see `GET /api/auth/google/callback`).
+    The Google sign-in endpoints and `GET /api/auth/verify-email` never return
+    JSON errors for their own failures. They redirect the browser to the
+    frontend with an `error` query parameter instead (see
+    `GET /api/auth/google/callback` and `GET /api/auth/verify-email`). Only a
+    malformed query gets a JSON `400`.
+
+    **Exception:** `429 Too Many Requests` responses of
+    `POST /api/auth/resend-verification` do **not** follow this shape. They
+    have no `errorCode`; see the `TooManyRequests` schema.
+
+    ## Email verification
+    Users who register with email and password start **unverified**.
+    `POST /api/auth/register` emails them a link to
+    `GET /api/auth/verify-email?token=<token>` that is valid for 24 hours.
+    `POST /api/auth/resend-verification` sends a new link and invalidates the
+    previous one. Users who sign up with Google are verified from the start.
+
+    Unverified users can currently log in and use the session like verified
+    users; verification is not enforced yet.
 
     ## Authentication
     `POST /api/auth/login` and a successful Google sign-in set two `HttpOnly`
@@ -57,6 +73,8 @@ servers:
 tags:
   - name: Auth
     description: Registration and authentication with email and password
+  - name: Email verification
+    description: Confirming the email address of a registered user
   - name: Google OAuth
     description: Sign-in with a Google account
 
@@ -83,6 +101,15 @@ paths:
         - The password is hashed with SHA-256 and then with bcrypt, so passwords
           longer than 72 bytes are not truncated. It is never returned.
         - Unknown properties (for example `id`) are silently ignored.
+        - The user is created **unverified**. A random verification token
+          (32 bytes, 64 hex characters) valid for 24 hours is generated; only its
+          SHA-256 hash is stored. An email with the link
+          `{BACKEND_URL}/api/auth/verify-email?token=<token>` is sent to the user
+          (see `GET /api/auth/verify-email`).
+        - The user and the token are saved before the email is sent. If sending
+          the email fails, the response is `500`, but the user **is** created: a
+          new attempt to register gets `409`. Use
+          `POST /api/auth/resend-verification` to get a new link.
         - The user is **not** logged in; no cookies are set. Call `POST /api/auth/login`
           afterwards.
       requestBody:
@@ -114,6 +141,8 @@ paths:
           `password` is trimmed before it is compared.
         - Accounts created through Google sign-in have no password and cannot log
           in here; they get the same `401` as a wrong password.
+        - Users whose email is not verified yet can log in; verification is not
+          checked.
         - On success, the response sets two cookies, both `HttpOnly`, `SameSite=Lax`
           and `Path=/`, plus `Secure` when the server runs in production:
           - `accessToken`: JWT valid for 15 minutes (`Max-Age=900`).
@@ -276,22 +305,22 @@ paths:
            cookie. If either is missing or they differ, the browser is redirected
            with `error=INVALID_STATE` and the state cookie is not cleared.
         3. The state cookie is cleared.
-        4. `code` is exchanged with Google for tokens (10 second timeout). If
+        4. If `code` is missing or empty, the browser is redirected with
+           `error=INVALID_GRANT` without contacting Google.
+        5. `code` is exchanged with Google for tokens (10 second timeout). If
            Google rejects the code as `invalid_grant` (for example, it was
            already used, has expired or is malformed), the browser is redirected
            with `error=INVALID_GRANT`; any other failure, such as another Google
            error, a timeout or a network error, gives `error=SERVER_ERROR`.
-           A missing `code` is not rejected up front: it is sent to Google as
-           the literal string `undefined`, which Google normally rejects as
-           `invalid_grant`.
-        5. If the Google email is not verified, the browser is redirected with
+        6. If the Google email is not verified, the browser is redirected with
            `error=EMAIL_UNVERIFIED`.
-        6. The user is looked up first by Google account ID (`sub`) and then by
+        7. The user is looked up first by Google account ID (`sub`) and then by
            email:
            - **No user found:** a new user is created with the Google email,
              `firstName` = Google `given_name` (or the full `name` when missing),
-             `lastName` = Google `family_name` (or an empty string), no password
-             and `role: null`. Such accounts can only sign in with Google.
+             `lastName` = Google `family_name` (or an empty string), no password,
+             `role: null`, and the email already **verified**. Such accounts can
+             only sign in with Google.
            - **User found by email but not linked to this Google account** (for
              example an email/password account): accounts are **not** linked; the
              browser is redirected with `error=EMAIL_IN_USE`.
@@ -301,9 +330,12 @@ paths:
              `error=EMAIL_IN_USE`. The tokens issued by this sign-in still carry
              the previous email; it is updated on the next
              `POST /api/auth/refresh`.
-        7. A new session is started, the `accessToken` and `refreshToken`
+        8. A new session is started, the `accessToken` and `refreshToken`
            cookies are set exactly as in `POST /api/auth/login`, and the browser
            is redirected to `FRONTEND_URL` without an `error` parameter.
+
+        Any unexpected error in steps 5–8 (for example, the database is
+        unavailable) also redirects with `error=SERVER_ERROR`.
 
         The email from Google is stored as Google returns it; it is not
         lower-cased.
@@ -364,6 +396,133 @@ paths:
               example: accessToken=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...; Max-Age=900; Path=/; HttpOnly; SameSite=Lax
         '400':
           $ref: '#/components/responses/OAuthQueryBadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/verify-email:
+    get:
+      tags: [Email verification]
+      operationId: verifyEmail
+      security: []
+      summary: Verify an email address
+      description: |
+        Target of the link in the verification email sent by
+        `POST /api/auth/register` and `POST /api/auth/resend-verification`. It
+        is opened in the browser. Except for a malformed query (see `400`), it
+        always answers with a `302` redirect to the frontend (`FRONTEND_URL`).
+
+        Steps, in order:
+
+        1. `token` is trimmed. A missing, empty or whitespace-only token, or a
+           token passed more than once, gets a JSON `400`.
+        2. The SHA-256 hash of the token is looked up. The token must exist, be
+           unused and not expired (tokens live 24 hours). Otherwise the browser
+           is redirected with `error=INVALID_VERIFICATION_TOKEN`. The token is
+           case-sensitive.
+        3. If the user of the token does not exist, the browser is redirected
+           with `error=USER_NOT_FOUND`.
+        4. If the user is already verified, the browser is redirected with
+           `error=EMAIL_ALREADY_VERIFIED` and the token stays unused.
+        5. The token is marked as used and the user as verified in one
+           transaction, and the browser is redirected to `FRONTEND_URL` without
+           an `error` parameter.
+
+        - Each token can be used only once. If the same token is sent in two
+          concurrent requests, only one of them succeeds; the other gets
+          `error=INVALID_VERIFICATION_TOKEN`.
+        - Only the latest token of a user is valid:
+          `POST /api/auth/resend-verification` replaces the previous one.
+        - Any unexpected error (for example, the database is unavailable)
+          redirects with `error=SERVER_ERROR` and leaves the token unused.
+        - The user is **not** signed in; no session cookies are set.
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: |
+            Verification token from the email link: 64 lower-case hex
+            characters. Leading and trailing whitespace is trimmed.
+          schema:
+            type: string
+            minLength: 1
+          example: 3c1f9a7e5b2d4c6a8e0f1b3d5a7c9e2f4b6d8a0c2e4f6b8d0a2c4e6f8b0d2a4c
+      responses:
+        '302':
+          description: |
+            Redirect to the frontend. On success, the URL has no `error`
+            parameter. On failure, the URL carries
+            `error=<VerifyEmailRedirectErrorCode>`. No cookies are set.
+          headers:
+            Location:
+              description: |
+                `FRONTEND_URL` on success, or `FRONTEND_URL` with an `error` query
+                parameter whose value is a `VerifyEmailRedirectErrorCode`.
+              schema:
+                type: string
+                format: uri
+              examples:
+                success:
+                  summary: Email verified
+                  value: http://localhost:5173/
+                invalidToken:
+                  summary: Unknown, used or expired token
+                  value: http://localhost:5173/?error=INVALID_VERIFICATION_TOKEN
+                alreadyVerified:
+                  summary: The email is already verified
+                  value: http://localhost:5173/?error=EMAIL_ALREADY_VERIFIED
+        '400':
+          $ref: '#/components/responses/VerifyEmailBadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/resend-verification:
+    post:
+      tags: [Email verification]
+      operationId: resendVerification
+      security: []
+      summary: Resend the verification email
+      description: |
+        Sends a new verification link to an unverified user.
+
+        - `email` is validated with the same rules as in
+          `POST /api/auth/register` and lower-cased, so the lookup is
+          case-insensitive.
+        - The response is **always** the same `200` with a generic message, so
+          it does not reveal whether an account exists. An email is sent only
+          when a user with this email exists and is not verified yet (accounts
+          created through Google sign-in are always verified).
+        - When an email is sent, a new token valid for 24 hours replaces the
+          previous one, so links sent earlier stop working. The link points to
+          `GET /api/auth/verify-email`.
+        - Unknown properties are silently ignored.
+
+        **Throttling.** Checks run in this order, after validation:
+
+        1. **Per-email cooldown:** one request per email address every 60
+           seconds, whether or not the account exists. A repeated request gets
+           `429` with `retryAfter` (seconds left) in the body. These requests do
+           not count towards the per-IP limit.
+        2. **Per-IP limit:** 3 requests per 5 minutes per client IP (IPv6
+           addresses are grouped by `/56` subnet). The client IP is taken from
+           `X-Forwarded-For` when present. Requests over the limit get `429`
+           with a `Retry-After` header.
+
+        Requests that pass the cooldown get the `RateLimit` and
+        `RateLimit-Policy` headers (IETF draft 08).
+
+        Both `429` bodies have no `errorCode` (see the `TooManyRequests`
+        schema).
+      requestBody:
+        $ref: '#/components/requestBodies/ResendVerificationRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/ResendVerificationSuccess'
+        '400':
+          $ref: '#/components/responses/ResendVerificationBadRequest'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/ResendVerificationTooManyRequests'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -533,17 +692,68 @@ components:
           type: string
           example: Refreshed
 
+    ResendVerificationInput:
+      type: object
+      description: Email address to send a new verification link to.
+      required: [email]
+      properties:
+        email:
+          $ref: '#/components/schemas/Email'
+
+    ResendVerificationResponse:
+      type: object
+      description: |
+        Generic confirmation. It is the same whether or not an email was sent.
+      required: [message]
+      additionalProperties: false
+      properties:
+        message:
+          type: string
+          enum:
+            - If an account with this email exists and isn't verified yet, we've sent a new verification link.
+          example: If an account with this email exists and isn't verified yet, we've sent a new verification link.
+
+    TooManyRequests:
+      type: object
+      description: |
+        Body of a `429` response of `POST /api/auth/resend-verification`. Unlike
+        other errors, it has no `errorCode`.
+      required: [message]
+      additionalProperties: false
+      properties:
+        message:
+          type: string
+          description: |
+            `Too many requests. Please try again later.` for the per-email
+            cooldown, or `Too many requests` for the per-IP limit.
+          enum:
+            - Too many requests. Please try again later.
+            - Too many requests
+          example: Too many requests. Please try again later.
+        retryAfter:
+          type: integer
+          minimum: 0
+          maximum: 60
+          description: |
+            Seconds until the per-email cooldown ends. Present only for the
+            per-email cooldown.
+          example: 42
+
     ErrorCode:
       type: string
       description: |
         Machine-readable error code. Every value of the shared `ErrorCode` type is
         listed; `ACCOUNT_IN_USE` is reserved and not returned yet.
+        `INVALID_VERIFICATION_TOKEN` and `EMAIL_ALREADY_VERIFIED` appear only as
+        redirect `error` values of `GET /api/auth/verify-email`, never in a JSON
+        body.
       enum:
         - SERVER_ERROR
         - EMAIL_IN_USE
         - INVALID_CREDENTIALS
         - TOKEN_NOT_FOUND
         - INVALID_TOKEN
+        - INVALID_VERIFICATION_TOKEN
         - USER_NOT_FOUND
         - EMAIL_UNVERIFIED
         - ACCOUNT_IN_USE
@@ -551,7 +761,26 @@ components:
         - INVALID_STATE
         - INVALID_GRANT
         - VALIDATION_ERROR
+        - EMAIL_ALREADY_VERIFIED
       example: EMAIL_IN_USE
+
+    VerifyEmailRedirectErrorCode:
+      type: string
+      description: |
+        Value of the `error` query parameter that `GET /api/auth/verify-email`
+        adds to the frontend URL when verification fails.
+
+        - `INVALID_VERIFICATION_TOKEN`: the token is unknown, already used,
+          expired, or replaced by a newer one.
+        - `USER_NOT_FOUND`: the user of the token no longer exists.
+        - `EMAIL_ALREADY_VERIFIED`: the user's email is already verified.
+        - `SERVER_ERROR`: any other failure.
+      enum:
+        - INVALID_VERIFICATION_TOKEN
+        - USER_NOT_FOUND
+        - EMAIL_ALREADY_VERIFIED
+        - SERVER_ERROR
+      example: INVALID_VERIFICATION_TOKEN
 
     OAuthRedirectErrorCode:
       type: string
@@ -562,7 +791,8 @@ components:
         - `CANCELED_AUTH`: the user cancelled on the Google consent screen.
         - `INVALID_STATE`: the `state` is missing or does not match the cookie
           (for example, the 10-minute cookie expired).
-        - `INVALID_GRANT`: Google rejected the authorization code.
+        - `INVALID_GRANT`: the authorization code is missing or Google rejected
+          it.
         - `EMAIL_UNVERIFIED`: the Google account email is not verified.
         - `EMAIL_IN_USE`: another account already uses the Google email.
         - `SERVER_ERROR`: any other failure, including other Google errors.
@@ -626,6 +856,32 @@ components:
           example:
             email: ada.lovelace@example.com
             password: correct-horse-battery
+
+    ResendVerificationRequest:
+      required: true
+      description: Must be a JSON object, at most 100 KB.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ResendVerificationInput'
+          example:
+            email: ada.lovelace@example.com
+
+  headers:
+    RateLimit:
+      description: |
+        Remaining quota of the per-IP limit (IETF draft 08): `r` is the number
+        of requests left, `t` the seconds until the window resets.
+      schema:
+        type: string
+      example: '"3-in-5min"; r=2; t=300'
+    RateLimitPolicy:
+      description: |
+        Per-IP limit policy (IETF draft 08): `q` requests per `w` seconds. `pk`
+        is a partition key derived from the client IP.
+      schema:
+        type: string
+      example: '"3-in-5min"; q=3; w=300; pk=:ZTNiMGM0NDI5OGZj:'
 
   responses:
     RegisterSuccess:
@@ -934,6 +1190,116 @@ components:
             errorCode: VALIDATION_ERROR
             message: 'Invalid input: expected string, received array'
 
+    VerifyEmailBadRequest:
+      description: |
+        The `token` query parameter is missing, empty after trimming, or not a
+        single string. No redirect happens and no token is used.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            missing:
+              summary: token is missing
+              value:
+                errorCode: VALIDATION_ERROR
+                message: 'Invalid input: expected string, received undefined'
+            empty:
+              summary: token is empty or whitespace only
+              value:
+                errorCode: VALIDATION_ERROR
+                message: Token is empty
+            repeated:
+              summary: token is passed more than once (`?token=a&token=b`)
+              value:
+                errorCode: VALIDATION_ERROR
+                message: 'Invalid input: expected string, received array'
+
+    ResendVerificationSuccess:
+      description: |
+        Request accepted. A verification email was sent only if an unverified
+        user with this email exists.
+      headers:
+        RateLimit:
+          $ref: '#/components/headers/RateLimit'
+        RateLimit-Policy:
+          $ref: '#/components/headers/RateLimitPolicy'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ResendVerificationResponse'
+          example:
+            message: If an account with this email exists and isn't verified yet, we've sent a new verification link.
+
+    ResendVerificationBadRequest:
+      description: |
+        The request body is missing, is not valid JSON, is not a JSON object, or
+        fails validation. The `errorCode` is always `VALIDATION_ERROR`. Rejected
+        requests do not start the per-email cooldown and do not count towards
+        the per-IP limit.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            missingBody:
+              summary: Body is missing or not JSON (for example, wrong Content-Type)
+              value:
+                errorCode: VALIDATION_ERROR
+                message: 'Invalid input: expected object, received undefined'
+            malformedJson:
+              summary: Malformed JSON, or a top-level JSON primitive (for example `"abc"`)
+              value:
+                errorCode: VALIDATION_ERROR
+                message: Invalid JSON payload passed
+            emailRequired:
+              summary: email is missing, null or an empty string
+              value:
+                errorCode: VALIDATION_ERROR
+                message: Email is required
+            emailInvalid:
+              summary: email is not a string or is not a valid address
+              value:
+                errorCode: VALIDATION_ERROR
+                message: Invalid email format
+            emailTooLong:
+              summary: email is longer than 255 characters
+              value:
+                errorCode: VALIDATION_ERROR
+                message: Email should not exceed 255 characters
+
+    ResendVerificationTooManyRequests:
+      description: |
+        The request is throttled. No email is sent. The body has no
+        `errorCode`.
+      headers:
+        Retry-After:
+          description: |
+            Seconds until the per-IP window resets. Sent only when the per-IP
+            limit is exceeded; for the per-email cooldown, use `retryAfter` in
+            the body.
+          schema:
+            type: integer
+          example: 287
+        RateLimit:
+          $ref: '#/components/headers/RateLimit'
+        RateLimit-Policy:
+          $ref: '#/components/headers/RateLimitPolicy'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TooManyRequests'
+          examples:
+            emailCooldown:
+              summary: The same email was requested less than 60 seconds ago
+              value:
+                message: Too many requests. Please try again later.
+                retryAfter: 42
+            ipLimit:
+              summary: The client IP sent more than 3 requests in 5 minutes
+              value:
+                message: Too many requests
+
     RefreshUnauthorized:
       description: |
         The refresh token is missing or cannot be used. Both session cookies are
@@ -1024,8 +1390,9 @@ components:
 
     InternalServerError:
       description: |
-        Unexpected server error, such as the database being unavailable or the
-        server not being configured (for example, a missing token signing key or
+        Unexpected server error, such as the database or Redis being
+        unavailable, a failure to send an email, or the server not being
+        configured (for example, a missing token signing key or
         `FRONTEND_URL`). A JSON body with a charset other than UTF-8/16/32 or an
         unsupported `Content-Encoding` also gets this response.
       content:
