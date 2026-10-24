@@ -1,8 +1,13 @@
-import { Router } from 'express';
+import { Router, type NextFunction, type Request, type Response } from 'express';
 import * as authController from './auth.controller.js';
 import { validate } from '../../middlewares/validator.js';
 import { loginSchema, registerSchema } from '@repo/shared';
-import { oauthSchema, resendVerificationSchema, verifyEmailSchema } from './auth.schemas.js';
+import {
+  oauthSchema,
+  resendVerificationSchema,
+  verifyEmailSchema,
+  type ResendVerificationBody,
+} from './auth.schemas.js';
 import { rateLimit } from 'express-rate-limit';
 import RedisStore from 'rate-limit-redis';
 import { redisClient } from '../../lib/redis.js';
@@ -18,6 +23,22 @@ const limiter = rateLimit({
   message: { message: 'Too many requests' },
   store: new RedisStore({ sendCommand: (...args: string[]) => redisClient.sendCommand(args) }),
 });
+
+async function checkEmailCooldown(
+  req: Request<unknown, unknown, ResendVerificationBody>,
+  res: Response,
+  next: NextFunction,
+) {
+  const key = `cooldown:${req.body.email}:send_email`;
+  if (await redisClient.GET(key)) {
+    const ttl = await redisClient.TTL(key);
+    return res
+      .status(429)
+      .json({ message: 'Too many requests. Please try again later.', retryAfter: ttl });
+  }
+
+  next();
+}
 
 router.post('/auth/register', validate({ body: registerSchema }), authController.register);
 router.post('/auth/login', validate({ body: loginSchema }), authController.login);
@@ -37,7 +58,8 @@ router.get(
 
 router.post(
   '/auth/resend-verification',
-  limiter,
   validate({ body: resendVerificationSchema }),
+  checkEmailCooldown,
+  limiter,
   authController.resendVerification,
 );

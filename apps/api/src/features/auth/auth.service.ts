@@ -10,6 +10,7 @@ import { getGoogleTokens } from '../google/google.service.js';
 import crypto from 'crypto';
 import { pg } from '../../lib/pg.js';
 import { transporter } from '../../lib/transporter.js';
+import { redisClient } from '../../lib/redis.js';
 
 function issueSession(user: JwtPayload, secretKey = process.env.SECRET_KEY!) {
   const accessToken = jwt.sign({ ...user, jti: crypto.randomUUID() }, secretKey, {
@@ -281,6 +282,8 @@ export async function resendVerification(email: string) {
     subject: 'Linguistix email verification',
     text: `Verify your email ${process.env.BACKEND_URL}/api/auth/verify-email?token=${token}`,
   });
+
+  await redisClient.SETEX(`cooldown:${email}:send_email`, 60, '1');
 
   return message;
 }
