@@ -138,7 +138,7 @@ describe('GET /api/auth/google/callback', () => {
       const existing = await seedUser({ password: 'bcrypt-hash' });
       mockGoogleProfile();
 
-      const res = await callback({ code: CODE, state: STATE }).expect(302);
+      await callback({ code: CODE, state: STATE }).expect(302);
 
       expect(await UserRepo.countUsers()).toBe(1);
       expect((await UserRepo.findUserById(existing.id))!.googleId).toBe(null);

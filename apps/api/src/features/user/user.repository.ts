@@ -1,10 +1,9 @@
 import type { Role } from '@repo/shared';
 import { pg } from '../../lib/pg.js';
-import { toEmailVerificationTokenDto, toUserDomain } from '../../utils/mappers.js';
+import { toUserDomain } from '../../utils/mappers.js';
 import { DatabaseError, type PoolClient } from 'pg';
 import { AppError } from '../../errors/AppError.js';
 import type { UserRow } from './user.types.js';
-import type { EmailVerificationTokenRow } from '../auth/auth.types.js';
 
 interface CreateUserParameters {
   googleId?: string;

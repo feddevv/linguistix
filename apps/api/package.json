@@ -48,7 +48,8 @@
     "qs": "^6.16.0",
     "supertest": "^7.3.1",
     "tsx": "^4.23.15",
-    "typescript": "^7.0.2",
+    "@typescript/native": "npm:typescript@~7.0.2",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-eslint": "^8.71.0",
     "vitest": "^5.0.3"
   }

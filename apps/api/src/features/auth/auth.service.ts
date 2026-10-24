@@ -112,7 +112,7 @@ export async function refresh(refreshToken: string | undefined) {
 
   try {
     jwt.verify(refreshToken, process.env.SECRET_KEY!);
-  } catch (err) {
+  } catch {
     throw new AppError('INVALID_TOKEN', 'Invalid or expired token');
   }
 
