@@ -12,6 +12,10 @@ import { pg } from '../../lib/pg.js';
 import { transporter } from '../../lib/transporter.js';
 import { redisClient } from '../../lib/redis.js';
 
+function issueRandomToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
 function issueSession(user: JwtPayload, secretKey = process.env.SECRET_KEY!) {
   const accessToken = jwt.sign({ ...user, jti: crypto.randomUUID() }, secretKey, {
     expiresIn: '15m',
@@ -47,7 +51,7 @@ export async function register({ firstName, lastName, password, email, role }: R
       client,
     });
 
-    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const verificationToken = issueRandomToken();
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 1);
 
@@ -154,7 +158,7 @@ export async function logout(refreshToken: string | undefined) {
 }
 
 export function google() {
-  const state = crypto.randomBytes(32).toString('hex');
+  const state = issueRandomToken();
 
   const googleAuthUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   googleAuthUrl.searchParams.append('response_type', 'code');
@@ -270,7 +274,7 @@ export async function resendVerification(email: string) {
   if (!user) return message;
   else if (user?.isVerified) return message;
 
-  const token = crypto.randomBytes(32).toString('hex');
+  const token = issueRandomToken();
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 1);
 

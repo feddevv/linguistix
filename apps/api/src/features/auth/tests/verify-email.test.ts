@@ -3,7 +3,7 @@ import request from 'supertest';
 import crypto from 'crypto';
 import type { ErrorCode } from '@repo/shared';
 import { app } from '../../../app.js';
-import { pg } from '../../../db/pg.js';
+import { pg } from '../../../lib/pg.js';
 import { hashString } from '../utils/hashing.js';
 import { daysFromNow, seedUser } from './utils/utils.js';
 import { expectErrorBody, expectNoAuthCookies } from './utils/expects.js';

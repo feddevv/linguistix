@@ -2,7 +2,7 @@ import { describe, it, beforeEach, afterAll, expect, vi } from 'vitest';
 import request, { type Response } from 'supertest';
 import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { app } from '../../../app.js';
-import { pg } from '../../../db/pg.js';
+import { pg } from '../../../lib/pg.js';
 import { LoginInput } from '@repo/shared';
 import { existingUser, seedUser, getCookie } from './utils/utils.js';
 import { expectErrorBody, expectNoAuthCookies } from './utils/expects.js';
