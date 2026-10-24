@@ -59,14 +59,14 @@ export async function register({ firstName, lastName, password, email, role }: R
       client,
     });
 
-    await client.query('COMMIT');
-
     await transporter.sendMail({
       from: 'linguistix@lang.com',
       to: user.email,
       subject: 'Linguistix email verification',
       text: `Verify your email ${process.env.BACKEND_URL}/api/auth/verify-email?token=${verificationToken}`,
     });
+
+    await client.query('COMMIT');
 
     return user;
   } catch (err) {
