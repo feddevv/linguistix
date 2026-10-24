@@ -5,7 +5,7 @@ import { loginSchema, registerSchema } from '@repo/shared';
 import { oauthSchema, resendVerificationSchema, verifyEmailSchema } from './auth.schemas.js';
 import { rateLimit } from 'express-rate-limit';
 import RedisStore from 'rate-limit-redis';
-import { client } from '../../lib/redis.js';
+import { redisClient } from '../../lib/redis.js';
 
 export const router: Router = Router();
 
@@ -16,7 +16,7 @@ const limiter = rateLimit({
   legacyHeaders: false,
   ipv6Subnet: 56,
   message: { message: 'Too many requests' },
-  store: new RedisStore({ sendCommand: (...args: string[]) => client.sendCommand(args) }),
+  store: new RedisStore({ sendCommand: (...args: string[]) => redisClient.sendCommand(args) }),
 });
 
 router.post('/auth/register', validate({ body: registerSchema }), authController.register);
