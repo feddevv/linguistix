@@ -11,3 +11,13 @@ export const verifyEmailSchema = z.object({
   token: z.string().trim().min(1, 'Token is empty'),
 });
 export type VerifyEmailQueryString = z.infer<typeof verifyEmailSchema>;
+
+export const resendVerificationSchema = z.object({
+  email: z
+    .email({
+      error: (iss) => (!iss.input ? 'Email is required' : 'Invalid email format'),
+    })
+    .toLowerCase()
+    .max(255, 'Email should not exceed 255 characters'),
+});
+export type ResendVerificationBody = z.infer<typeof resendVerificationSchema>;

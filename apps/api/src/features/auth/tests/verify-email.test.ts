@@ -3,9 +3,10 @@ import request from 'supertest';
 import crypto from 'crypto';
 import type { ErrorCode } from '@repo/shared';
 import { app } from '../../../app.js';
-import { pg } from '../../../db/pg.js';
+import { pg } from '../../../lib/pg.js';
 import { hashString } from '../utils/hashing.js';
-import { daysFromNow, seedUser } from './utils/utils.js';
+import { seedUser } from './utils/utils.js';
+import { daysFromNow } from '../utils/index.js';
 import { expectErrorBody, expectNoAuthCookies } from './utils/expects.js';
 import { UserRepo } from '../../user/user.repository.js';
 import { EmailVerificationTokenRepo } from '../auth.repository.js';
@@ -168,17 +169,6 @@ describe('GET /api/auth/verify-email', () => {
 
       expect(res.headers.location).toBe(errorRedirect('EMAIL_ALREADY_VERIFIED'));
       expect(await isVerified(user.id)).toBe(true);
-    });
-
-    it('rejects a second, still valid token once the email is verified by the first one', async () => {
-      const user = await seedUser();
-      const first = await seedToken(user.id);
-      const second = await seedToken(user.id);
-      await verifyEmail({ token: first }).expect(302);
-
-      const res = await verifyEmail({ token: second }).expect(302);
-
-      expect(res.headers.location).toBe(errorRedirect('EMAIL_ALREADY_VERIFIED'));
     });
   });
 

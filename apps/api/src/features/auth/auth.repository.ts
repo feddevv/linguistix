@@ -1,5 +1,5 @@
 import type { PoolClient } from 'pg';
-import { pg } from '../../db/pg.js';
+import { pg } from '../../lib/pg.js';
 import {
   toEmailVerificationTokenDto,
   toRefreshTokenDomain,
@@ -95,6 +95,20 @@ class EmailVerificationToken {
     if (!token.rows[0]) return null;
 
     return { userId: token.rows[0].user_id };
+  }
+
+  async rotateToken(userId: string, newTokenHash: string, newExpiresAt: Date) {
+    const token = await pg.query(
+      `
+        INSERT INTO email_verification_tokens (token_hash, expires_at, user_id)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (user_id) DO UPDATE 
+        SET token_hash = EXCLUDED.token_hash, expires_at = EXCLUDED.expires_at, used_at = NULL;
+      `,
+      [newTokenHash, newExpiresAt, userId],
+    );
+
+    return token.rowCount;
   }
 }
 

@@ -19,10 +19,13 @@
     "bcrypt": "^6.0.0",
     "cookie-parser": "^1.4.7",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.7.1",
     "jsonwebtoken": "^9.0.3",
     "jwt-decode": "^4.0.0",
     "nodemailer": "^10.1.5",
     "pg": "^8.23.1",
+    "rate-limit-redis": "^6.0.1",
+    "redis": "^6.3.0",
     "swagger-ui-express": "^5.0.1",
     "yaml": "^2.9.1",
     "zod": "^4.6.5"
@@ -45,7 +48,8 @@
     "qs": "^6.16.0",
     "supertest": "^7.3.1",
     "tsx": "^4.23.15",
-    "typescript": "^7.0.2",
+    "@typescript/native": "npm:typescript@~7.0.2",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-eslint": "^8.71.0",
     "vitest": "^5.0.3"
   }

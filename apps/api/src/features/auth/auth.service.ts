@@ -3,13 +3,17 @@ import type { LoginInput, RegisterInput } from '@repo/shared';
 import { compare, hash } from 'bcrypt';
 import { AppError } from '../../errors/AppError.js';
 import jwt, { type JwtPayload } from 'jsonwebtoken';
-import { hashString } from './utils/hashing.js';
 import { UserRepo } from '../user/user.repository.js';
 import { jwtDecode } from 'jwt-decode';
 import { getGoogleTokens } from '../google/google.service.js';
 import crypto from 'crypto';
-import { pg } from '../../db/pg.js';
+import { pg } from '../../lib/pg.js';
 import { transporter } from '../../lib/transporter.js';
+import { daysFromNow, hashString } from './utils/index.js';
+
+function issueRandomToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
 
 function issueSession(user: JwtPayload, secretKey = process.env.SECRET_KEY!) {
   const accessToken = jwt.sign({ ...user, jti: crypto.randomUUID() }, secretKey, {
@@ -22,8 +26,7 @@ function issueSession(user: JwtPayload, secretKey = process.env.SECRET_KEY!) {
 
   const hashedRefreshToken = hashString(refreshToken);
 
-  const date = new Date();
-  date.setDate(date.getDate() + 15);
+  const date = daysFromNow(15);
 
   return { accessToken, refreshToken, hashedRefreshToken, date };
 }
@@ -46,9 +49,8 @@ export async function register({ firstName, lastName, password, email, role }: R
       client,
     });
 
-    const verificationToken = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 1);
+    const verificationToken = issueRandomToken();
+    const expiresAt = daysFromNow(1);
 
     await EmailVerificationTokenRepo.createToken({
       tokenHash: hashString(verificationToken),
@@ -110,7 +112,7 @@ export async function refresh(refreshToken: string | undefined) {
 
   try {
     jwt.verify(refreshToken, process.env.SECRET_KEY!);
-  } catch (err) {
+  } catch {
     throw new AppError('INVALID_TOKEN', 'Invalid or expired token');
   }
 
@@ -153,7 +155,7 @@ export async function logout(refreshToken: string | undefined) {
 }
 
 export function google() {
-  const state = crypto.randomBytes(32).toString('hex');
+  const state = issueRandomToken();
 
   const googleAuthUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   googleAuthUrl.searchParams.append('response_type', 'code');
@@ -259,4 +261,27 @@ export async function verifyEmail(token: string) {
   } finally {
     client.release();
   }
+}
+
+export async function resendVerification(email: string) {
+  const message =
+    "If an account with this email exists and isn't verified yet, we've sent a new verification link.";
+  const user = await UserRepo.findUserByEmail(email);
+
+  if (!user) return message;
+  else if (user?.isVerified) return message;
+
+  const token = issueRandomToken();
+  const expiresAt = daysFromNow(1);
+
+  await EmailVerificationTokenRepo.rotateToken(user.id, hashString(token), expiresAt);
+
+  await transporter.sendMail({
+    from: 'linguistix@lang.com',
+    to: user.email,
+    subject: 'Linguistix email verification',
+    text: `Verify your email ${process.env.BACKEND_URL}/api/auth/verify-email?token=${token}`,
+  });
+
+  return message;
 }

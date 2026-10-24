@@ -1,6 +1,6 @@
 import { hash } from 'bcrypt';
 import { hashString } from '../../utils/hashing.js';
-import { pg } from '../../../../db/pg.js';
+import { pg } from '../../../../lib/pg.js';
 import { type Response } from 'supertest';
 import request from 'supertest';
 import { app } from '../../../../app.js';
@@ -64,8 +64,4 @@ export async function loginAs(user: { email: string; password: string }) {
     accessToken: getCookie(res, 'accessToken')!.value,
     refreshToken: getCookie(res, 'refreshToken')!.value,
   };
-}
-
-export function daysFromNow(days: number) {
-  return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 }

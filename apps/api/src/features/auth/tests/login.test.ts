@@ -1,8 +1,8 @@
 import { describe, it, beforeEach, afterAll, expect, vi } from 'vitest';
-import request, { type Response } from 'supertest';
+import request from 'supertest';
 import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { app } from '../../../app.js';
-import { pg } from '../../../db/pg.js';
+import { pg } from '../../../lib/pg.js';
 import { LoginInput } from '@repo/shared';
 import { existingUser, seedUser, getCookie } from './utils/utils.js';
 import { expectErrorBody, expectNoAuthCookies } from './utils/expects.js';
@@ -153,7 +153,7 @@ describe('POST /api/auth/login', () => {
     });
 
     it('issues a signed refresh token identifying the user that expires in 15 days', async () => {
-      const user = await seedUser();
+      await seedUser();
 
       const res = await login(buildCredentials()).expect(200);
       const payload = verifyToken(getCookie(res, 'refreshToken')!.value);

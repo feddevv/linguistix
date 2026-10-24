@@ -6,8 +6,12 @@ import type {
   RegisterResponseDTO,
 } from '@repo/shared';
 import * as authService from './auth.service.js';
-import { deleteJWTCookie, setJWTCookie } from './utils/cookies.js';
-import type { OAuthQueryString, VerifyEmailQueryString } from './auth.schemas.js';
+import { deleteJWTCookie, setJWTCookie } from './utils/index.js';
+import type {
+  OAuthQueryString,
+  ResendVerificationBody,
+  VerifyEmailQueryString,
+} from './auth.schemas.js';
 import { AppError } from '../../errors/AppError.js';
 import type { ErrorCode } from '@repo/shared';
 
@@ -160,4 +164,13 @@ export async function verifyEmail(req: Request, res: Response) {
     console.error(err);
     res.redirect(buildErrorUrl(process.env.FRONTEND_URL!, 'SERVER_ERROR'));
   }
+}
+
+export async function resendVerification(
+  req: Request<unknown, unknown, ResendVerificationBody>,
+  res: Response,
+) {
+  const message = await authService.resendVerification(req.body.email);
+
+  res.json({ message });
 }

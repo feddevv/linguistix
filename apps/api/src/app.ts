@@ -9,6 +9,8 @@ import cookieParser from 'cookie-parser';
 
 export const app: Express = express();
 
+app.set('trust proxy', true);
+
 // Middlewares
 app.use(json());
 app.use(cookieParser());

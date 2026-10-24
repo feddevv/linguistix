@@ -3,7 +3,7 @@ import { AppError } from '../errors/AppError.js';
 import { ZodError } from 'zod';
 import type { ErrorCode } from '@repo/shared';
 
-export function globalErrorHandler(err: unknown, req: Request, res: Response, next: NextFunction) {
+export function globalErrorHandler(err: unknown, req: Request, res: Response, _next: NextFunction) {
   let statusCode = 500;
   let message = 'Internal server error!';
   let errorCode: ErrorCode = 'SERVER_ERROR';

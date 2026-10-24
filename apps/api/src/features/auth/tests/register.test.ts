@@ -3,7 +3,7 @@ import request from 'supertest';
 import { compare } from 'bcrypt';
 import type { RegisterInput } from '@repo/shared';
 import { app } from '../../../app.js';
-import { pg } from '../../../db/pg.js';
+import { pg } from '../../../lib/pg.js';
 import { UserRepo } from '../../user/user.repository.js';
 import { UUID_REGEX } from './utils/utils.js';
 import { hashString } from '../utils/hashing.js';

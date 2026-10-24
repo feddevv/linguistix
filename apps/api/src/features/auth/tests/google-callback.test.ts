@@ -2,7 +2,7 @@ import { describe, it, beforeEach, afterAll, expect, vi } from 'vitest';
 import request, { type Response } from 'supertest';
 import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { app } from '../../../app.js';
-import { pg } from '../../../db/pg.js';
+import { pg } from '../../../lib/pg.js';
 import { hashString } from '../utils/hashing.js';
 import { getCookie } from './utils/utils.js';
 import { expectNoAuthCookies } from './utils/expects.js';
@@ -138,7 +138,7 @@ describe('GET /api/auth/google/callback', () => {
       const existing = await seedUser({ password: 'bcrypt-hash' });
       mockGoogleProfile();
 
-      const res = await callback({ code: CODE, state: STATE }).expect(302);
+      await callback({ code: CODE, state: STATE }).expect(302);
 
       expect(await UserRepo.countUsers()).toBe(1);
       expect((await UserRepo.findUserById(existing.id))!.googleId).toBe(null);
