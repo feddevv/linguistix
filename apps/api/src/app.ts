@@ -23,7 +23,7 @@ const limiter = rateLimit({
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   ipv6Subnet: 56,
-  message: { message: 'Too many requests' },
+  message: { errorCode: 'REQUEST_LIMIT', message: 'Too many requests' },
   store: new RedisStore({ sendCommand: (...args: string[]) => redisClient.sendCommand(args) }),
 });
 app.use(limiter);

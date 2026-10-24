@@ -20,7 +20,7 @@ const limiter = rateLimit({
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   ipv6Subnet: 56,
-  message: { message: 'Too many requests' },
+  message: { errorCode: 'REQUEST_LIMIT', message: 'Too many requests' },
   store: new RedisStore({ sendCommand: (...args: string[]) => redisClient.sendCommand(args) }),
 });
 
@@ -36,9 +36,11 @@ async function checkEmailCooldown(
   });
   if (!acquired) {
     const ttl = await redisClient.TTL(key);
-    return res
-      .status(429)
-      .json({ message: 'Too many requests. Please try again later.', retryAfter: ttl });
+    return res.status(429).json({
+      errorCode: 'COOLDOWN',
+      message: 'Too many requests. Please try again later.',
+      retryAfter: ttl,
+    });
   }
 
   next();
