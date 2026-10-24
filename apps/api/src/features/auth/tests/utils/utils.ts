@@ -65,7 +65,3 @@ export async function loginAs(user: { email: string; password: string }) {
     refreshToken: getCookie(res, 'refreshToken')!.value,
   };
 }
-
-export function daysFromNow(days: number) {
-  return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-}

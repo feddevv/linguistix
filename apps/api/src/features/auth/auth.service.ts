@@ -3,14 +3,13 @@ import type { LoginInput, RegisterInput } from '@repo/shared';
 import { compare, hash } from 'bcrypt';
 import { AppError } from '../../errors/AppError.js';
 import jwt, { type JwtPayload } from 'jsonwebtoken';
-import { hashString } from './utils/hashing.js';
 import { UserRepo } from '../user/user.repository.js';
 import { jwtDecode } from 'jwt-decode';
 import { getGoogleTokens } from '../google/google.service.js';
 import crypto from 'crypto';
 import { pg } from '../../lib/pg.js';
 import { transporter } from '../../lib/transporter.js';
-import { redisClient } from '../../lib/redis.js';
+import { daysFromNow, hashString } from './utils/index.js';
 
 function issueRandomToken() {
   return crypto.randomBytes(32).toString('hex');
@@ -27,8 +26,7 @@ function issueSession(user: JwtPayload, secretKey = process.env.SECRET_KEY!) {
 
   const hashedRefreshToken = hashString(refreshToken);
 
-  const date = new Date();
-  date.setDate(date.getDate() + 15);
+  const date = daysFromNow(15);
 
   return { accessToken, refreshToken, hashedRefreshToken, date };
 }
@@ -52,8 +50,7 @@ export async function register({ firstName, lastName, password, email, role }: R
     });
 
     const verificationToken = issueRandomToken();
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 1);
+    const expiresAt = daysFromNow(1);
 
     await EmailVerificationTokenRepo.createToken({
       tokenHash: hashString(verificationToken),
@@ -275,8 +272,7 @@ export async function resendVerification(email: string) {
   else if (user?.isVerified) return message;
 
   const token = issueRandomToken();
-  const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + 1);
+  const expiresAt = daysFromNow(1);
 
   await EmailVerificationTokenRepo.rotateToken(user.id, hashString(token), expiresAt);
 

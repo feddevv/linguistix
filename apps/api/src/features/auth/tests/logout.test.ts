@@ -4,7 +4,8 @@ import jwt from 'jsonwebtoken';
 import { app } from '../../../app.js';
 import { pg } from '../../../lib/pg.js';
 import { hashString } from '../utils/hashing.js';
-import { existingUser, seedUser, getCookie, loginAs, daysFromNow } from './utils/utils.js';
+import { existingUser, seedUser, getCookie, loginAs } from './utils/utils.js';
+import { daysFromNow } from '../utils/index.js';
 import { expectAuthCookiesCleared } from './utils/expects.js';
 import { RefreshTokenRepo } from '../auth.repository.js';
 

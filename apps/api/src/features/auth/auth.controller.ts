@@ -6,7 +6,7 @@ import type {
   RegisterResponseDTO,
 } from '@repo/shared';
 import * as authService from './auth.service.js';
-import { deleteJWTCookie, setJWTCookie } from './utils/cookies.js';
+import { deleteJWTCookie, setJWTCookie } from './utils/index.js';
 import type {
   OAuthQueryString,
   ResendVerificationBody,
