@@ -283,7 +283,5 @@ export async function resendVerification(email: string) {
     text: `Verify your email ${process.env.BACKEND_URL}/api/auth/verify-email?token=${token}`,
   });
 
-  await redisClient.SETEX(`cooldown:${email}:send_email`, 60, '1');
-
   return message;
 }

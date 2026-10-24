@@ -30,7 +30,11 @@ async function checkEmailCooldown(
   next: NextFunction,
 ) {
   const key = `cooldown:${req.body.email}:send_email`;
-  if (await redisClient.GET(key)) {
+  const acquired = await redisClient.SET(key, '1', {
+    condition: 'NX',
+    expiration: { type: 'EX', value: 60 },
+  });
+  if (!acquired) {
     const ttl = await redisClient.TTL(key);
     return res
       .status(429)
