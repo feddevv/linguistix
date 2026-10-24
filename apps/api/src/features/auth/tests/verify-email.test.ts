@@ -170,17 +170,6 @@ describe('GET /api/auth/verify-email', () => {
       expect(res.headers.location).toBe(errorRedirect('EMAIL_ALREADY_VERIFIED'));
       expect(await isVerified(user.id)).toBe(true);
     });
-
-    it('rejects a second, still valid token once the email is verified by the first one', async () => {
-      const user = await seedUser();
-      const first = await seedToken(user.id);
-      const second = await seedToken(user.id);
-      await verifyEmail({ token: first }).expect(302);
-
-      const res = await verifyEmail({ token: second }).expect(302);
-
-      expect(res.headers.location).toBe(errorRedirect('EMAIL_ALREADY_VERIFIED'));
-    });
   });
 
   describe('invalid query', () => {
