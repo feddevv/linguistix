@@ -24,3 +24,7 @@ export const emailWorker = new Worker(
     concurrency: 5,
   },
 );
+
+emailWorker.on('failed', (job, err) => {
+  console.error(`Job ${job?.id} failed with error: ${err.message}`);
+});
