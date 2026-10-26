@@ -4,20 +4,21 @@ Linguistix uses **PostgreSQL**, with migrations managed by [`node-pg-migrate`](h
 
 - Migrations live in `migrations/`. From `apps/api`, run them with `pnpm migrate:dev up` (uses `../../.env`) or `pnpm migrate:test up` (uses `../../.env.test`).
 - The current schema is defined in a single migration: `migrations/1791052707599_init.ts`.
-- Most primary keys are UUID v7 (`DEFAULT uuidv7()`), so IDs sort by creation time. The built-in `uuidv7()` function needs **PostgreSQL 18+**. The `room_members` and `refresh_tokens` tables use a `BIGINT` identity column instead.
+- Most primary keys are UUID v7 (`DEFAULT uuidv7()`), so IDs sort by creation time. The built-in `uuidv7()` function needs **PostgreSQL 18+**. The `room_members`, `refresh_tokens` and `email_verification_tokens` tables use a `BIGINT` identity column instead.
 
 ## Overview
 
-| Table            | Purpose                                                           |
-| ---------------- | ----------------------------------------------------------------- |
-| `users`          | Every account on the platform, either a student or a teacher.     |
-| `rooms`          | Classrooms or study groups, each with one owner.                  |
-| `room_members`   | Join table linking users to the rooms they belong to.             |
-| `lessons`        | Scheduled live sessions in a room, run by a teacher.              |
-| `assignments`    | Homework a teacher sets for a room.                               |
-| `submissions`    | A student's answer to an assignment, with its grade and feedback. |
-| `words`          | Vocabulary entries, collected in a room or not tied to any room.  |
-| `refresh_tokens` | Hashed refresh tokens issued to users at login.                   |
+| Table                       | Purpose                                                           |
+| --------------------------- | ----------------------------------------------------------------- |
+| `users`                     | Every account on the platform, either a student or a teacher.     |
+| `rooms`                     | Classrooms or study groups, each with one owner.                  |
+| `room_members`              | Join table linking users to the rooms they belong to.             |
+| `lessons`                   | Scheduled live sessions in a room, run by a teacher.              |
+| `assignments`               | Homework a teacher sets for a room.                               |
+| `submissions`               | A student's answer to an assignment, with its grade and feedback. |
+| `words`                     | Vocabulary entries, collected in a room or not tied to any room.  |
+| `refresh_tokens`            | Hashed refresh tokens issued to users at login.                   |
+| `email_verification_tokens` | Hashed email verification token of an unverified user.            |
 
 ## ER Diagram
 
@@ -35,6 +36,7 @@ erDiagram
     rooms |o--o{ words          : "collects"
     users ||--o{ words          : "adds"
     users ||--o{ refresh_tokens : "holds"
+    users ||--o| email_verification_tokens : "verifies with"
 
     users {
         uuid      id PK
@@ -45,6 +47,7 @@ erDiagram
         varchar   password
         timestamp created_at
         user_role role
+        boolean   is_verified
     }
 
     rooms {
@@ -111,6 +114,14 @@ erDiagram
         timestamp expires_at
         uuid      user_id FK
     }
+
+    email_verification_tokens {
+        bigint    id PK
+        text      token_hash UK
+        timestamp expires_at
+        timestamp used_at
+        uuid      user_id FK, UK
+    }
 ```
 
 ## Enum Types
@@ -126,18 +137,19 @@ erDiagram
 
 ### `users`
 
-Every account on the platform. The `role` column decides whether the user is a student or a teacher. Accounts created through Google sign-in have no password and start with no role.
+Every account on the platform. The `role` column decides whether the user is a student or a teacher. Accounts created through Google sign-in have no password, start with no role and are verified from the start.
 
-| Column       | Type           | Null | Default        | Notes                                     |
-| ------------ | -------------- | ---- | -------------- | ----------------------------------------- |
-| `id`         | `UUID`         | no   | `uuidv7()`     | Primary key                               |
-| `google_id`  | `TEXT`         | yes  |                | Unique. Google account ID, if linked      |
-| `first_name` | `VARCHAR(100)` | no   |                |                                           |
-| `last_name`  | `VARCHAR(100)` | no   |                |                                           |
-| `email`      | `VARCHAR(255)` | no   |                | Unique                                    |
-| `password`   | `VARCHAR(255)` | yes  |                | Password hash. `NULL` for Google accounts |
-| `created_at` | `TIMESTAMP`    | no   | `CURRENT_DATE` | Default is midnight of the current day    |
-| `role`       | `user_role`    | yes  |                | `NULL` until the user picks a role        |
+| Column        | Type           | Null | Default        | Notes                                     |
+| ------------- | -------------- | ---- | -------------- | ----------------------------------------- |
+| `id`          | `UUID`         | no   | `uuidv7()`     | Primary key                               |
+| `google_id`   | `TEXT`         | yes  |                | Unique. Google account ID, if linked      |
+| `first_name`  | `VARCHAR(100)` | no   |                |                                           |
+| `last_name`   | `VARCHAR(100)` | no   |                |                                           |
+| `email`       | `VARCHAR(255)` | no   |                | Unique                                    |
+| `password`    | `VARCHAR(255)` | yes  |                | Password hash. `NULL` for Google accounts |
+| `created_at`  | `TIMESTAMP`    | no   | `CURRENT_DATE` | Default is midnight of the current day    |
+| `role`        | `user_role`    | yes  |                | `NULL` until the user picks a role        |
+| `is_verified` | `BOOLEAN`      | no   | `FALSE`        | Whether the email address is verified     |
 
 ### `rooms`
 
@@ -181,17 +193,17 @@ A live session in a room, run by a teacher.
 
 Homework a teacher sets for a room. Draft assignments can be incomplete. Any other status requires all content fields to be filled.
 
-| Column        | Type                | Null | Default    | Notes                                 |
-| ------------- | ------------------- | ---- | ---------- | ------------------------------------- |
-| `id`          | `UUID`              | no   | `uuidv7()` | Primary key                           |
-| `title`       | `VARCHAR(255)`      | yes* |            |                                       |
-| `content`     | `TEXT`              | yes* |            |                                       |
-| `teacher_id`  | `UUID`              | yes  |            | FK → `users.id`, `ON DELETE SET NULL` |
-| `room_id`     | `UUID`              | no   |            | FK → `rooms.id`, `ON DELETE CASCADE`  |
-| `assigned_at` | `TIMESTAMP`         | yes* |            |                                       |
-| `due_to`      | `TIMESTAMP`         | yes* |            | Due date                              |
-| `status`      | `assignment_status` | no   | `'draft'`  |                                       |
-| `max_grade`   | `SMALLINT`          | yes* |            |                                       |
+| Column        | Type                | Null  | Default    | Notes                                 |
+| ------------- | ------------------- | ----- | ---------- | ------------------------------------- |
+| `id`          | `UUID`              | no    | `uuidv7()` | Primary key                           |
+| `title`       | `VARCHAR(255)`      | yes\* |            |                                       |
+| `content`     | `TEXT`              | yes\* |            |                                       |
+| `teacher_id`  | `UUID`              | yes   |            | FK → `users.id`, `ON DELETE SET NULL` |
+| `room_id`     | `UUID`              | no    |            | FK → `rooms.id`, `ON DELETE CASCADE`  |
+| `assigned_at` | `TIMESTAMP`         | yes\* |            |                                       |
+| `due_to`      | `TIMESTAMP`         | yes\* |            | Due date                              |
+| `status`      | `assignment_status` | no    | `'draft'`  |                                       |
+| `max_grade`   | `SMALLINT`          | yes\* |            |                                       |
 
 \* **`chk_published_field_not_null`**: when `status <> 'draft'`, the columns `title`, `content`, `assigned_at`, `due_to` and `max_grade` must all be non-null.
 
@@ -238,10 +250,22 @@ Refresh tokens issued to a user. Only a hash of each token is stored.
 | `expires_at`         | `TIMESTAMP` | no   |                                |                                      |
 | `user_id`            | `UUID`      | no   |                                | FK → `users.id`, `ON DELETE CASCADE` |
 
+### `email_verification_tokens`
+
+The email verification token of a user. Only a hash of the token is stored. A user has at most one token: `user_id` is unique, so issuing a new token replaces the old one.
+
+| Column       | Type        | Null | Default                        | Notes                                        |
+| ------------ | ----------- | ---- | ------------------------------ | -------------------------------------------- |
+| `id`         | `BIGINT`    | no   | `GENERATED ALWAYS AS IDENTITY` | Primary key                                  |
+| `token_hash` | `TEXT`      | no   |                                | Unique. Hash of the verification token       |
+| `expires_at` | `TIMESTAMP` | no   |                                |                                              |
+| `used_at`    | `TIMESTAMP` | yes  |                                | `NULL` until the token is used               |
+| `user_id`    | `UUID`      | no   |                                | Unique. FK → `users.id`, `ON DELETE CASCADE` |
+
 ## Delete Behaviour
 
-| When this is deleted… | Effect                                                                                                                                                                                                    |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **User**              | Blocked if the user owns a room or added any word. Otherwise their memberships, lessons, submissions and refresh tokens are deleted, and their assignments keep existing with `teacher_id` set to `NULL`. |
-| **Room**              | Its memberships, lessons, assignments (and so their submissions) and words are deleted.                                                                                                                   |
-| **Assignment**        | Its submissions are deleted.                                                                                                                                                                              |
+| When this is deleted… | Effect                                                                                                                                                                                                                              |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **User**              | Blocked if the user owns a room or added any word. Otherwise their memberships, lessons, submissions, refresh tokens and email verification token are deleted, and their assignments keep existing with `teacher_id` set to `NULL`. |
+| **Room**              | Its memberships, lessons, assignments (and so their submissions) and words are deleted.                                                                                                                                             |
+| **Assignment**        | Its submissions are deleted.                                                                                                                                                                                                        |
