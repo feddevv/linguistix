@@ -1,7 +1,9 @@
 import { createNodeRedisClient, Queue } from 'bullmq';
 import { redisClient } from '../../lib/redis.js';
 
-export const emailQueue = new Queue('email-queue', {
+export const EMAIL_QUEUE_NAME = 'email-queue';
+
+export const emailQueue = new Queue(EMAIL_QUEUE_NAME, {
   connection: createNodeRedisClient(redisClient),
   defaultJobOptions: {
     attempts: 3,
