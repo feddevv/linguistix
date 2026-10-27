@@ -3,9 +3,14 @@ import { EMAIL_QUEUE_NAME } from '../queues/email.queue.js';
 import { redisClient } from '../../lib/redis.js';
 import { sendVerificationEmail } from '../../shared/services/email.service.js';
 
+interface EmailJob {
+  email: string;
+  verificationToken: string;
+}
+
 export const emailWorker = new Worker(
   EMAIL_QUEUE_NAME,
-  async (job: Job) => {
+  async (job: Job<EmailJob>) => {
     switch (job.name) {
       case 'email-verification':
         await sendVerificationEmail(job.data.email, job.data.verificationToken);
