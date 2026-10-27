@@ -5,7 +5,7 @@ import { AppError } from '../../errors/AppError.js';
 import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { UserRepo } from '../user/user.repository.js';
 import { jwtDecode } from 'jwt-decode';
-import { getGoogleTokens } from '../google/google.service.js';
+import { getGoogleTokens } from './google.service.js';
 import crypto from 'crypto';
 import { pg } from '../../lib/pg.js';
 import { daysFromNow, hashString } from './utils/index.js';
