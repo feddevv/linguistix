@@ -8,14 +8,14 @@ import { UserRepo } from '../../user/user.repository.js';
 import { UUID_REGEX } from './utils/utils.js';
 import { hashString } from '../utils/hashing.js';
 import { expectErrorBody } from './utils/expects.js';
-import { transporter } from '../../../lib/transporter.js';
+import { emailQueue } from '../../../jobs/queues/email.queue.js';
 
 const ENDPOINT = '/api/auth/register';
 
-vi.mock('../../../lib/transporter.ts', () => ({
-  transporter: { sendMail: vi.fn() },
+vi.mock('../../../jobs/queues/email.queue.ts', () => ({
+  emailQueue: { add: vi.fn() },
 }));
-const sendMailMock = vi.mocked(transporter.sendMail);
+const addToQueueMock = vi.mocked(emailQueue.add);
 
 function buildUser(overrides: Partial<Record<keyof RegisterInput, unknown>> = {}) {
   return {
@@ -42,7 +42,7 @@ function emailOfLength(length: number) {
 }
 
 beforeEach(async () => {
-  sendMailMock.mockReset();
+  addToQueueMock.mockReset();
   await pg.query('TRUNCATE TABLE users CASCADE;');
 });
 
@@ -323,19 +323,20 @@ describe('POST /api/auth/register', () => {
     });
 
     describe('email verification list', () => {
-      it('send a list with a verification link to the registered user', async () => {
+      it('adds an email job to the task queue', async () => {
         const res = await register(buildUser()).expect(201);
 
-        expect(sendMailMock).toHaveBeenCalledWith(
+        expect(addToQueueMock).toHaveBeenCalledWith(
+          'email-verification',
           expect.objectContaining({
-            to: res.body.user.email,
-            text: expect.stringMatching(/\/api\/auth\/verify-email\?token=[0-9a-f]{64}/),
+            email: res.body.user.email,
+            verificationToken: expect.any(String),
           }),
         );
       });
 
       it('creates a user even though the error occurs when sending the list', async () => {
-        sendMailMock.mockRejectedValueOnce(new Error('Unknown'));
+        addToQueueMock.mockRejectedValueOnce(new Error('Unknown'));
         await register(buildUser()).expect(500);
 
         expect(await UserRepo.countUsers()).toBe(1);
