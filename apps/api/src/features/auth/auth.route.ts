@@ -3,9 +3,9 @@ import * as authController from './auth.controller.js';
 import { validate } from '../../middlewares/validator.js';
 import { loginSchema, registerSchema } from '@repo/shared';
 import {
+  forgotPasswordSchema,
   oauthSchema,
   resendVerificationSchema,
-  resetPasswordVerificationSchema,
   verifyEmailSchema,
   type ResendVerificationBody,
 } from './auth.schemas.js';
@@ -86,9 +86,7 @@ router.post(
 );
 
 router.post(
-  '/auth/send-reset-password',
-  validate({ body: resetPasswordVerificationSchema }),
-  authController.sendResetPassword,
+  '/auth/forgot-password',
+  validate({ body: forgotPasswordSchema }),
+  authController.forgotPassword,
 );
-
-router.post('/auth/reset-password', validate({ body: resetPasswordVerificationSchema }));

@@ -22,8 +22,8 @@ export const resendVerificationSchema = z.object({
 });
 export type ResendVerificationBody = z.infer<typeof resendVerificationSchema>;
 
-export const resetPasswordVerificationSchema = z.object({
+export const forgotPasswordSchema = z.object({
   email: resendVerificationSchema.shape.email,
 });
 
-export type ResetPasswordVerificationBody = z.infer<typeof resetPasswordVerificationSchema>;
+export type ForgotPasswordBody = z.infer<typeof forgotPasswordSchema>;
