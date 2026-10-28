@@ -288,11 +288,11 @@ export async function sendResetPassword(email: string) {
 
   const verificationToken = issueRandomToken();
 
-  await ResetPasswordVerificationTokenRepo.createToken({
-    expiresAt: daysFromNow(1),
-    tokenHash: hashString(verificationToken),
-    userId: user.id,
-  });
+  await ResetPasswordVerificationTokenRepo.rotateToken(
+    user.id,
+    hashString(verificationToken),
+    daysFromNow(1),
+  );
 
   await emailQueue.add('reset-password', { email: user.email, verificationToken });
 }
