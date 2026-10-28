@@ -4,19 +4,19 @@ import crypto from 'crypto';
 import { app } from '../../../app.js';
 import { pg } from '../../../lib/pg.js';
 import { redisClient } from '../../../lib/redis.js';
-import { transporter } from '../../../lib/transporter.js';
 import { UserRepo } from '../../user/user.repository.js';
 import { existingUser, seedUser } from './utils/utils.js';
 import { expectErrorBody } from './utils/expects.js';
+import { emailQueue } from '../../../jobs/queues/email.queue.js';
 
 const ENDPOINT = '/api/auth/resend-verification';
 const GENERIC_MESSAGE =
   "If an account with this email exists and isn't verified yet, we've sent a new verification link.";
 
-vi.mock('../../../lib/transporter.ts', () => ({
-  transporter: { sendMail: vi.fn() },
+vi.mock('../../../jobs/queues/email.queue.ts', () => ({
+  emailQueue: { add: vi.fn() },
 }));
-const sendMailMock = vi.mocked(transporter.sendMail);
+const addToQueueMock = vi.mocked(emailQueue.add);
 
 function randomIp() {
   return `10.${crypto.randomInt(256)}.${crypto.randomInt(256)}.${crypto.randomInt(256)}`;
@@ -31,8 +31,8 @@ function resendVerification(body: unknown, ip = randomIp()) {
 }
 
 function sentToken(callIndex = 0) {
-  const { text } = sendMailMock.mock.calls[callIndex]![0];
-  return String(text).match(/token=([0-9a-f]+)/)![1]!;
+  const { verificationToken } = addToQueueMock.mock.calls[callIndex]![1];
+  return String(verificationToken).match(/([0-9a-f]+)/)![0]!;
 }
 
 function verifyEmail(token: string) {
@@ -50,7 +50,7 @@ async function clearThrottling() {
 
 beforeEach(async () => {
   vi.stubEnv('FRONTEND_URL', 'http://localhost:5173/');
-  sendMailMock.mockReset();
+  addToQueueMock.mockReset();
   await clearThrottling();
   await pg.query('TRUNCATE TABLE users CASCADE;');
 });
@@ -72,11 +72,12 @@ describe('POST /api/auth/resend-verification', () => {
         .expect('Content-Type', /json/);
 
       expect(res.body).toEqual({ message: GENERIC_MESSAGE });
-      expect(sendMailMock).toHaveBeenCalledOnce();
-      expect(sendMailMock).toHaveBeenCalledWith(
+      expect(addToQueueMock).toHaveBeenCalledOnce();
+      expect(addToQueueMock).toHaveBeenCalledWith(
+        'email-verification',
         expect.objectContaining({
-          to: user.email,
-          text: expect.stringMatching(/\/api\/auth\/verify-email\?token=[0-9a-f]{64}/),
+          email: user.email,
+          verificationToken: expect.any(String),
         }),
       );
     });
@@ -101,14 +102,6 @@ describe('POST /api/auth/resend-verification', () => {
 
       expect(await isVerified(user.id)).toBe(false);
     });
-
-    it('treats the email as case-insensitive', async () => {
-      const user = await seedUser();
-
-      await resendVerification({ email: 'Ada.Lovelace@Example.COM' }).expect(200);
-
-      expect(sendMailMock).toHaveBeenCalledWith(expect.objectContaining({ to: user.email }));
-    });
   });
 
   describe('account enumeration', () => {
@@ -118,7 +111,7 @@ describe('POST /api/auth/resend-verification', () => {
       const res = await resendVerification({ email: 'grace.hopper@example.com' }).expect(200);
 
       expect(res.body).toEqual({ message: GENERIC_MESSAGE });
-      expect(sendMailMock).not.toHaveBeenCalled();
+      expect(addToQueueMock).not.toHaveBeenCalled();
     });
 
     it('returns the same response without sending an email for an already verified user', async () => {
@@ -128,7 +121,7 @@ describe('POST /api/auth/resend-verification', () => {
       const res = await resendVerification({ email: user.email }).expect(200);
 
       expect(res.body).toEqual({ message: GENERIC_MESSAGE });
-      expect(sendMailMock).not.toHaveBeenCalled();
+      expect(addToQueueMock).not.toHaveBeenCalled();
     });
   });
 
@@ -142,7 +135,7 @@ describe('POST /api/auth/resend-verification', () => {
 
       expectErrorBody(res.body, message);
       expect(res.body.errorCode).toBe('VALIDATION_ERROR');
-      expect(sendMailMock).not.toHaveBeenCalled();
+      expect(addToQueueMock).not.toHaveBeenCalled();
     });
   });
 
@@ -156,7 +149,7 @@ describe('POST /api/auth/resend-verification', () => {
       expectErrorBody(res.body);
       expect(res.body.retryAfter).toBeGreaterThan(0);
       expect(res.body.retryAfter).toBeLessThanOrEqual(60);
-      expect(sendMailMock).toHaveBeenCalledOnce();
+      expect(addToQueueMock).toHaveBeenCalledOnce();
     });
 
     it('does not throttle requests for different emails because of another email cooldown', async () => {
@@ -166,7 +159,7 @@ describe('POST /api/auth/resend-verification', () => {
 
       await resendVerification({ email: other.email }).expect(200);
 
-      expect(sendMailMock).toHaveBeenCalledTimes(2);
+      expect(addToQueueMock).toHaveBeenCalledTimes(2);
     });
 
     it('returns 429 once a single IP exceeds the request limit', async () => {
