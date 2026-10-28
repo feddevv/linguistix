@@ -16,7 +16,7 @@ export const app: Express = express();
 app.use(json());
 app.use(cookieParser());
 
-app.set('trust proxy', true);
+app.set('trust proxy', 1);
 
 // Rate Limiting
 const limiter = rateLimit({
