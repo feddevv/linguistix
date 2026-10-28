@@ -32,3 +32,6 @@ export interface EmailVerificationTokenDto {
   usedAt: Date | null;
   userId: string;
 }
+
+export type ResetPasswordVerificationTokenRow = EmailVerificationTokenRow;
+export type ResetPasswordVerificationTokenDto = EmailVerificationTokenDto;
