@@ -14,14 +14,26 @@ import { redisClient } from '../../lib/redis.js';
 
 export const router: Router = Router();
 
-const limiter = rateLimit({
+const loginLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
   limit: 3,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   message: { errorCode: 'REQUEST_LIMIT', message: 'Too many requests' },
   store: new RedisStore({
-    prefix: 'rl:auth:',
+    prefix: 'rl:auth:login:',
+    sendCommand: (...args: string[]) => redisClient.sendCommand(args),
+  }),
+});
+
+const resendVerificationLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  limit: 3,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { errorCode: 'REQUEST_LIMIT', message: 'Too many requests' },
+  store: new RedisStore({
+    prefix: 'rl:auth:resendVerification:',
     sendCommand: (...args: string[]) => redisClient.sendCommand(args),
   }),
 });
@@ -49,7 +61,7 @@ async function checkEmailCooldown(
 }
 
 router.post('/auth/register', validate({ body: registerSchema }), authController.register);
-router.post('/auth/login', limiter, validate({ body: loginSchema }), authController.login);
+router.post('/auth/login', loginLimiter, validate({ body: loginSchema }), authController.login);
 router.post('/auth/refresh', authController.refresh);
 router.post('/auth/logout', authController.logout);
 router.get('/auth/google', authController.google);
@@ -68,6 +80,6 @@ router.post(
   '/auth/resend-verification',
   validate({ body: resendVerificationSchema }),
   checkEmailCooldown,
-  limiter,
+  resendVerificationLimiter,
   authController.resendVerification,
 );
