@@ -21,3 +21,9 @@ export const resendVerificationSchema = z.object({
     .max(255, 'Email should not exceed 255 characters'),
 });
 export type ResendVerificationBody = z.infer<typeof resendVerificationSchema>;
+
+export const resetPasswordVerificationSchema = z.object({
+  email: resendVerificationSchema.shape.email,
+});
+
+export type ResetPasswordVerificationBody = z.infer<typeof resetPasswordVerificationSchema>;

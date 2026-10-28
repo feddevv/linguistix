@@ -5,6 +5,7 @@ import { loginSchema, registerSchema } from '@repo/shared';
 import {
   oauthSchema,
   resendVerificationSchema,
+  resetPasswordVerificationSchema,
   verifyEmailSchema,
   type ResendVerificationBody,
 } from './auth.schemas.js';
@@ -84,4 +85,8 @@ router.post(
   authController.resendVerification,
 );
 
-router.post('/auth/send-reset-password');
+router.post(
+  '/auth/send-reset-password',
+  validate({ body: resetPasswordVerificationSchema }),
+  authController.sendResetPassword,
+);
