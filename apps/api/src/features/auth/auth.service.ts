@@ -59,9 +59,9 @@ export async function register({ firstName, lastName, password, email, role }: R
       client,
     });
 
-    await emailQueue.add('email-verification', { email: user.email, verificationToken });
-
     await client.query('COMMIT');
+
+    await emailQueue.add('email-verification', { email: user.email, verificationToken });
 
     return user;
   } catch (err) {
