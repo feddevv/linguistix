@@ -11,7 +11,7 @@ export const emailQueue = new Queue(EMAIL_QUEUE_NAME, {
       type: 'exponential',
       delay: 2000,
     },
-    removeOnComplete: { count: 100 },
+    removeOnComplete: true,
     removeOnFail: { count: 500 },
   },
 });
