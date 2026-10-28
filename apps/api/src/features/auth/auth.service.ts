@@ -1,4 +1,8 @@
-import { EmailVerificationTokenRepo, RefreshTokenRepo } from './auth.repository.js';
+import {
+  EmailVerificationTokenRepo,
+  RefreshTokenRepo,
+  ResetPasswordVerificationTokenRepo,
+} from './auth.repository.js';
 import type { LoginInput, RegisterInput } from '@repo/shared';
 import { compare, hash } from 'bcrypt';
 import { AppError } from '../../errors/AppError.js';
@@ -276,4 +280,19 @@ export async function resendVerification(email: string) {
   return message;
 }
 
-export async function sendResetPassword(email: string) {}
+export async function sendResetPassword(email: string) {
+  const user = await UserRepo.findUserByEmail(email);
+
+  if (!user) return;
+  else if (!user.isVerified) return;
+
+  const verificationToken = issueRandomToken();
+
+  await ResetPasswordVerificationTokenRepo.createToken({
+    expiresAt: daysFromNow(1),
+    tokenHash: hashString(verificationToken),
+    userId: user.id,
+  });
+
+  await emailQueue.add('reset-password', { email: user.email, verificationToken });
+}
