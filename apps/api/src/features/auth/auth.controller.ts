@@ -10,6 +10,7 @@ import { deleteJWTCookie, setJWTCookie } from './utils/index.js';
 import type {
   OAuthQueryString,
   ResendVerificationBody,
+  ResetPasswordVerificationBody,
   VerifyEmailQueryString,
 } from './auth.schemas.js';
 import { AppError } from '../../errors/AppError.js';
@@ -175,8 +176,11 @@ export async function resendVerification(
   res.json({ message });
 }
 
-export async function sendResetPassword(req: Request, res: Response) {
-  await authService.sendResetPassword();
+export async function sendResetPassword(
+  req: Request<unknown, unknown, ResetPasswordVerificationBody>,
+  res: Response,
+) {
+  await authService.sendResetPassword(req.body.email);
 
   res.json({ message: 'Confirmation link has been sent' });
 }
