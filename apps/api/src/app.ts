@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import YAML from 'yaml';
 import path from 'node:path';
 import cookieParser from 'cookie-parser';
-import rateLimit from 'express-rate-limit';
+import { rateLimit } from 'express-rate-limit';
 import RedisStore from 'rate-limit-redis';
 import { redisClient } from './lib/redis.js';
 
@@ -16,15 +16,19 @@ export const app: Express = express();
 app.use(json());
 app.use(cookieParser());
 
+app.set('trust proxy', 1);
+
 // Rate Limiting
 const limiter = rateLimit({
   windowMs: 60 * 1000,
   limit: 100,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
-  ipv6Subnet: 56,
   message: { errorCode: 'REQUEST_LIMIT', message: 'Too many requests' },
-  store: new RedisStore({ sendCommand: (...args: string[]) => redisClient.sendCommand(args) }),
+  store: new RedisStore({
+    prefix: 'rl:global:',
+    sendCommand: (...args: string[]) => redisClient.sendCommand(args),
+  }),
 });
 app.use(limiter);
 

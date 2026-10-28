@@ -5,11 +5,11 @@ import { AppError } from '../../errors/AppError.js';
 import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { UserRepo } from '../user/user.repository.js';
 import { jwtDecode } from 'jwt-decode';
-import { getGoogleTokens } from '../google/google.service.js';
+import { getGoogleTokens } from './google.service.js';
 import crypto from 'crypto';
 import { pg } from '../../lib/pg.js';
-import { transporter } from '../../lib/transporter.js';
 import { daysFromNow, hashString } from './utils/index.js';
+import { emailQueue } from '../../jobs/queues/email.queue.js';
 
 function issueRandomToken() {
   return crypto.randomBytes(32).toString('hex');
@@ -59,14 +59,9 @@ export async function register({ firstName, lastName, password, email, role }: R
       client,
     });
 
-    await transporter.sendMail({
-      from: 'linguistix@lang.com',
-      to: user.email,
-      subject: 'Linguistix email verification',
-      text: `Verify your email ${process.env.BACKEND_URL}/api/auth/verify-email?token=${verificationToken}`,
-    });
-
     await client.query('COMMIT');
+
+    await emailQueue.add('email-verification', { email: user.email, verificationToken });
 
     return user;
   } catch (err) {
@@ -274,14 +269,9 @@ export async function resendVerification(email: string) {
   const token = issueRandomToken();
   const expiresAt = daysFromNow(1);
 
-  await EmailVerificationTokenRepo.rotateToken(user.id, hashString(token), expiresAt);
+  await emailQueue.add('email-verification', { email: user.email, verificationToken: token });
 
-  await transporter.sendMail({
-    from: 'linguistix@lang.com',
-    to: user.email,
-    subject: 'Linguistix email verification',
-    text: `Verify your email ${process.env.BACKEND_URL}/api/auth/verify-email?token=${token}`,
-  });
+  await EmailVerificationTokenRepo.rotateToken(user.id, hashString(token), expiresAt);
 
   return message;
 }

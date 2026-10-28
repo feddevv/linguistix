@@ -4,15 +4,15 @@ import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { app } from '../../../app.js';
 import { pg } from '../../../lib/pg.js';
 import { hashString } from '../utils/hashing.js';
-import { getCookie } from './utils/utils.js';
+import { clearThrottling, getCookie } from './utils/utils.js';
 import { expectNoAuthCookies } from './utils/expects.js';
 import { UserRepo } from '../../user/user.repository.js';
 import { RefreshTokenRepo } from '../auth.repository.js';
-import { getGoogleTokens } from '../../google/google.service.js';
+import { getGoogleTokens } from '../google.service.js';
 import { AppError } from '../../../errors/AppError.js';
 import { ErrorCode } from '@repo/shared';
 
-vi.mock('../../google/google.service.js', () => ({ getGoogleTokens: vi.fn() }));
+vi.mock('../google.service.js', () => ({ getGoogleTokens: vi.fn() }));
 
 const getGoogleTokensMock = vi.mocked(getGoogleTokens);
 
@@ -84,6 +84,7 @@ async function expectSessionIssued(res: Response) {
 beforeEach(async () => {
   vi.stubEnv('FRONTEND_URL', FRONTEND_URL);
   getGoogleTokensMock.mockReset();
+  await clearThrottling();
   await pg.query('TRUNCATE TABLE users CASCADE;');
 });
 

@@ -19,9 +19,11 @@ const limiter = rateLimit({
   limit: 3,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
-  ipv6Subnet: 56,
   message: { errorCode: 'REQUEST_LIMIT', message: 'Too many requests' },
-  store: new RedisStore({ sendCommand: (...args: string[]) => redisClient.sendCommand(args) }),
+  store: new RedisStore({
+    prefix: 'rl:auth:',
+    sendCommand: (...args: string[]) => redisClient.sendCommand(args),
+  }),
 });
 
 async function checkEmailCooldown(
