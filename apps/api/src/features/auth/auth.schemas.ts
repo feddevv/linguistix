@@ -1,3 +1,4 @@
+import { registerSchema } from '@repo/shared';
 import z from 'zod';
 
 export const oauthSchema = z.object({
@@ -27,3 +28,12 @@ export const forgotPasswordSchema = z.object({
 });
 
 export type ForgotPasswordBody = z.infer<typeof forgotPasswordSchema>;
+
+export const resetPasswordSchema = z.object({
+  email: resendVerificationSchema.shape.email,
+  verificationToken: verifyEmailSchema.shape.token,
+  newPassword: registerSchema.shape.password,
+  confirmPassword: registerSchema.shape.confirmPassword,
+});
+
+export type ResetPasswordBody = z.infer<typeof resetPasswordSchema>;

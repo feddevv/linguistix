@@ -6,6 +6,7 @@ import {
   forgotPasswordSchema,
   oauthSchema,
   resendVerificationSchema,
+  resetPasswordSchema,
   verifyEmailSchema,
   type ResendVerificationBody,
 } from './auth.schemas.js';
@@ -88,5 +89,11 @@ router.post(
 router.post(
   '/auth/forgot-password',
   validate({ body: forgotPasswordSchema }),
+  authController.forgotPassword,
+);
+
+router.post(
+  '/auth/reset-password',
+  validate({ body: resetPasswordSchema }),
   authController.forgotPassword,
 );
