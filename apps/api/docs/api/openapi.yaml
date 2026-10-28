@@ -21,6 +21,8 @@ info:
     | `INVALID_TOKEN`       | 401    | Refresh token is invalid, expired or already used          |
     | `USER_NOT_FOUND`      | 404    | The user of the session no longer exists                   |
     | `EMAIL_IN_USE`        | 409    | A user with this email already exists                      |
+    | `REQUEST_LIMIT`       | 429    | The client IP exceeded a rate limit                        |
+    | `COOLDOWN`            | 429    | The same email was used less than 60 seconds ago           |
     | `SERVER_ERROR`        | 500    | Unexpected server error                                    |
 
     Validation errors report **only the first** failing rule. Fields are checked
@@ -33,9 +35,29 @@ info:
     `GET /api/auth/google/callback` and `GET /api/auth/verify-email`). Only a
     malformed query gets a JSON `400`.
 
-    **Exception:** `429 Too Many Requests` responses of
-    `POST /api/auth/resend-verification` do **not** follow this shape. They
-    have no `errorCode`; see the `TooManyRequests` schema.
+    `429` responses add an optional `retryAfter` field (see the
+    `TooManyRequests` schema).
+
+    ## Rate limiting
+    Limits are counted per client IP (IPv6 addresses are grouped by `/56`
+    subnet) and stored in Redis. The server trusts **one** proxy hop: the
+    client IP is the last entry of `X-Forwarded-For`, or the socket address
+    when the header is missing.
+
+    - **Global limit:** 100 requests per minute, shared by every route
+      (including unknown routes and, in development, `/api/docs`).
+    - **Auth limit:** 3 requests per 5 minutes, applied to
+      `POST /api/auth/login` and `POST /api/auth/resend-verification`. Each
+      endpoint has its **own** counter per IP.
+    - **Per-email cooldown:** see `POST /api/auth/resend-verification`.
+
+    Requests rejected by `express.json()` (malformed JSON, body over 100 KB)
+    fail before the limiters and are not counted.
+
+    Every counted response carries the `RateLimit` and `RateLimit-Policy`
+    headers (IETF draft 08), one entry per limiter that applies, for example
+    `"100-in-1min"` and `"3-in-5min"`. A request over an IP limit gets `429`
+    with `errorCode: REQUEST_LIMIT` and a `Retry-After` header.
 
     ## Email verification
     Users who register with email and password start **unverified**.
@@ -43,6 +65,11 @@ info:
     `GET /api/auth/verify-email?token=<token>` that is valid for 24 hours.
     `POST /api/auth/resend-verification` sends a new link and invalidates the
     previous one. Users who sign up with Google are verified from the start.
+
+    Emails are sent **asynchronously** through a Redis-backed job queue: the
+    endpoints respond as soon as the email is queued. A failed send is retried
+    up to 3 times with exponential backoff (2 s, 4 s); delivery failures are
+    not reported to the client.
 
     Unverified users can currently log in and use the session like verified
     users; verification is not enforced yet.
@@ -106,10 +133,12 @@ paths:
           SHA-256 hash is stored. An email with the link
           `{BACKEND_URL}/api/auth/verify-email?token=<token>` is sent to the user
           (see `GET /api/auth/verify-email`).
-        - The user and the token are saved before the email is sent. If sending
-          the email fails, the response is `500`, but the user **is** created: a
+        - The user and the token are saved in one transaction, and only then is
+          the email queued. If queueing fails (for example, Redis is
+          unavailable), the response is `500`, but the user **is** created: a
           new attempt to register gets `409`. Use
-          `POST /api/auth/resend-verification` to get a new link.
+          `POST /api/auth/resend-verification` to get a new link. Failures to
+          deliver the queued email are not reported.
         - The user is **not** logged in; no cookies are set. Call `POST /api/auth/login`
           afterwards.
       requestBody:
@@ -123,6 +152,8 @@ paths:
           $ref: '#/components/responses/EmailConflict'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -150,6 +181,11 @@ paths:
         - Each successful login starts a new session; sessions started earlier stay
           valid.
         - Unknown properties are silently ignored.
+        - **Throttling:** besides the global limit, login is subject to the auth
+          limit of 3 requests per 5 minutes per client IP. The counter is
+          separate from `POST /api/auth/resend-verification`. It is checked **before**
+          validation, so every attempt counts, whether it succeeds, fails
+          validation or has wrong credentials.
       requestBody:
         $ref: '#/components/requestBodies/LoginRequest'
       responses:
@@ -161,6 +197,8 @@ paths:
           $ref: '#/components/responses/InvalidCredentials'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -192,7 +230,7 @@ paths:
         - On success, the response sets the same two cookies as
           `POST /api/auth/login`.
         - On `401`, `404` or `500`, both `accessToken` and `refreshToken` cookies
-          are cleared.
+          are cleared. On `429` the cookies are not changed.
       responses:
         '200':
           $ref: '#/components/responses/RefreshSuccess'
@@ -204,6 +242,8 @@ paths:
           $ref: '#/components/responses/RefreshUserNotFound'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '500':
           $ref: '#/components/responses/RefreshInternalServerError'
 
@@ -234,7 +274,8 @@ paths:
           example a `j:`-prefixed JSON cookie), malformed, never issued, or already
           logged out. In those cases no session is deleted.
         - Both `accessToken` and `refreshToken` cookies are cleared on `200` and on
-          `500`.
+          `500`. On `429` the session is not ended and the cookies are not
+          changed.
       responses:
         '200':
           $ref: '#/components/responses/LogoutSuccess'
@@ -242,6 +283,8 @@ paths:
           $ref: '#/components/responses/MalformedJsonBody'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '500':
           $ref: '#/components/responses/LogoutInternalServerError'
 
@@ -282,6 +325,8 @@ paths:
               schema:
                 type: string
               example: google-oauth-state=9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08; Max-Age=600; Path=/; HttpOnly; SameSite=Lax
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   /api/auth/google/callback:
     get:
@@ -292,8 +337,9 @@ paths:
       summary: Finish Google sign-in
       description: |
         Redirect target that Google calls after the consent screen. It is not
-        meant to be called directly. Except for a malformed query (see `400`),
-        it always answers with a `302` redirect to the frontend (`FRONTEND_URL`).
+        meant to be called directly. Except for a malformed query (see `400`)
+        or the global rate limit (see `429`), it always answers with a `302`
+        redirect to the frontend (`FRONTEND_URL`).
 
         Steps, in order:
 
@@ -396,6 +442,8 @@ paths:
               example: accessToken=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...; Max-Age=900; Path=/; HttpOnly; SameSite=Lax
         '400':
           $ref: '#/components/responses/OAuthQueryBadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -408,8 +456,9 @@ paths:
       description: |
         Target of the link in the verification email sent by
         `POST /api/auth/register` and `POST /api/auth/resend-verification`. It
-        is opened in the browser. Except for a malformed query (see `400`), it
-        always answers with a `302` redirect to the frontend (`FRONTEND_URL`).
+        is opened in the browser. Except for a malformed query (see `400`) or
+        the global rate limit (see `429`), it always answers with a `302`
+        redirect to the frontend (`FRONTEND_URL`).
 
         Steps, in order:
 
@@ -472,6 +521,8 @@ paths:
                   value: http://localhost:5173/?error=EMAIL_ALREADY_VERIFIED
         '400':
           $ref: '#/components/responses/VerifyEmailBadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -491,27 +542,26 @@ paths:
           it does not reveal whether an account exists. An email is sent only
           when a user with this email exists and is not verified yet (accounts
           created through Google sign-in are always verified).
-        - When an email is sent, a new token valid for 24 hours replaces the
-          previous one, so links sent earlier stop working. The link points to
-          `GET /api/auth/verify-email`.
+        - When an email is sent, the email is queued first and then a new token
+          valid for 24 hours replaces the previous one, so links sent earlier
+          stop working. The link points to `GET /api/auth/verify-email`. If
+          queueing fails, the response is `500` and the previous link stays
+          valid.
         - Unknown properties are silently ignored.
 
-        **Throttling.** Checks run in this order, after validation:
+        **Throttling.** Checks run in this order:
 
-        1. **Per-email cooldown:** one request per email address every 60
-           seconds, whether or not the account exists. A repeated request gets
-           `429` with `retryAfter` (seconds left) in the body. These requests do
-           not count towards the per-IP limit.
-        2. **Per-IP limit:** 3 requests per 5 minutes per client IP (IPv6
-           addresses are grouped by `/56` subnet). The client IP is taken from
-           `X-Forwarded-For` when present. Requests over the limit get `429`
-           with a `Retry-After` header.
-
-        Requests that pass the cooldown get the `RateLimit` and
-        `RateLimit-Policy` headers (IETF draft 08).
-
-        Both `429` bodies have no `errorCode` (see the `TooManyRequests`
-        schema).
+        1. **Global limit:** 100 requests per minute per client IP (see
+           *Rate limiting* above). Checked before validation.
+        2. Validation.
+        3. **Per-email cooldown:** one request per (lower-cased) email address
+           every 60 seconds, whether or not the account exists. A repeated
+           request gets `429` with `errorCode: COOLDOWN` and `retryAfter`
+           (seconds left) in the body. These requests do not count towards the
+           auth limit. The cooldown starts even if the request later fails.
+        4. **Auth limit:** 3 requests per 5 minutes per client IP, counted
+           separately from `POST /api/auth/login`. Requests over the limit get `429` with
+           `errorCode: REQUEST_LIMIT` and a `Retry-After` header.
       requestBody:
         $ref: '#/components/requestBodies/ResendVerificationRequest'
       responses:
@@ -716,27 +766,35 @@ components:
     TooManyRequests:
       type: object
       description: |
-        Body of a `429` response of `POST /api/auth/resend-verification`. Unlike
-        other errors, it has no `errorCode`.
-      required: [message]
+        Body of a `429` response. It has the usual `errorCode` and `message`;
+        the per-email cooldown also returns `retryAfter`.
+      required: [errorCode, message]
       additionalProperties: false
       properties:
+        errorCode:
+          type: string
+          description: |
+            `REQUEST_LIMIT` for a per-IP rate limit, `COOLDOWN` for the
+            per-email cooldown of `POST /api/auth/resend-verification`.
+          enum: [REQUEST_LIMIT, COOLDOWN]
+          example: REQUEST_LIMIT
         message:
           type: string
           description: |
+            `Too many requests` for a per-IP limit, or
             `Too many requests. Please try again later.` for the per-email
-            cooldown, or `Too many requests` for the per-IP limit.
+            cooldown.
           enum:
-            - Too many requests. Please try again later.
             - Too many requests
-          example: Too many requests. Please try again later.
+            - Too many requests. Please try again later.
+          example: Too many requests
         retryAfter:
           type: integer
           minimum: 0
           maximum: 60
           description: |
-            Seconds until the per-email cooldown ends. Present only for the
-            per-email cooldown.
+            Seconds until the per-email cooldown ends. Present only with
+            `errorCode: COOLDOWN`; per-IP limits use the `Retry-After` header.
           example: 42
 
     ErrorCode:
@@ -762,6 +820,8 @@ components:
         - INVALID_GRANT
         - VALIDATION_ERROR
         - EMAIL_ALREADY_VERIFIED
+        - REQUEST_LIMIT
+        - COOLDOWN
       example: EMAIL_IN_USE
 
     VerifyEmailRedirectErrorCode:
@@ -870,18 +930,30 @@ components:
   headers:
     RateLimit:
       description: |
-        Remaining quota of the per-IP limit (IETF draft 08): `r` is the number
-        of requests left, `t` the seconds until the window resets.
+        Remaining quota of each per-IP limit that applies (IETF draft 08),
+        comma-separated: `r` is the number of requests left, `t` the seconds
+        until the window resets. The global limit is `"100-in-1min"`; the auth
+        limit of `POST /api/auth/login` and
+        `POST /api/auth/resend-verification` is `"3-in-5min"`.
       schema:
         type: string
-      example: '"3-in-5min"; r=2; t=300'
+      example: '"100-in-1min"; r=99; t=60, "3-in-5min"; r=2; t=300'
     RateLimitPolicy:
       description: |
-        Per-IP limit policy (IETF draft 08): `q` requests per `w` seconds. `pk`
-        is a partition key derived from the client IP.
+        Policy of each per-IP limit that applies (IETF draft 08),
+        comma-separated: `q` requests per `w` seconds. `pk` is a partition key
+        derived from the client IP.
       schema:
         type: string
-      example: '"3-in-5min"; q=3; w=300; pk=:ZTNiMGM0NDI5OGZj:'
+      example: '"100-in-1min"; q=100; w=60; pk=:ZTNiMGM0NDI5OGZj:, "3-in-5min"; q=3; w=300; pk=:ZTNiMGM0NDI5OGZj:'
+    RetryAfter:
+      description: |
+        Seconds until the exceeded per-IP window resets. Sent only with
+        `errorCode: REQUEST_LIMIT`; for the per-email cooldown, use
+        `retryAfter` in the body.
+      schema:
+        type: integer
+      example: 42
 
   responses:
     RegisterSuccess:
@@ -1236,7 +1308,7 @@ components:
         The request body is missing, is not valid JSON, is not a JSON object, or
         fails validation. The `errorCode` is always `VALIDATION_ERROR`. Rejected
         requests do not start the per-email cooldown and do not count towards
-        the per-IP limit.
+        the auth limit (they do count towards the global limit).
       content:
         application/json:
           schema:
@@ -1270,17 +1342,11 @@ components:
 
     ResendVerificationTooManyRequests:
       description: |
-        The request is throttled. No email is sent. The body has no
-        `errorCode`.
+        The request is throttled by the global limit, the per-email cooldown or
+        the auth limit. No email is sent.
       headers:
         Retry-After:
-          description: |
-            Seconds until the per-IP window resets. Sent only when the per-IP
-            limit is exceeded; for the per-email cooldown, use `retryAfter` in
-            the body.
-          schema:
-            type: integer
-          example: 287
+          $ref: '#/components/headers/RetryAfter'
         RateLimit:
           $ref: '#/components/headers/RateLimit'
         RateLimit-Policy:
@@ -1293,12 +1359,33 @@ components:
             emailCooldown:
               summary: The same email was requested less than 60 seconds ago
               value:
+                errorCode: COOLDOWN
                 message: Too many requests. Please try again later.
                 retryAfter: 42
             ipLimit:
-              summary: The client IP sent more than 3 requests in 5 minutes
+              summary: The client IP exceeded the global or the auth limit
               value:
+                errorCode: REQUEST_LIMIT
                 message: Too many requests
+
+    TooManyRequests:
+      description: |
+        The client IP exceeded a rate limit (see *Rate limiting*). The request
+        is not processed.
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+        RateLimit:
+          $ref: '#/components/headers/RateLimit'
+        RateLimit-Policy:
+          $ref: '#/components/headers/RateLimitPolicy'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TooManyRequests'
+          example:
+            errorCode: REQUEST_LIMIT
+            message: Too many requests
 
     RefreshUnauthorized:
       description: |
@@ -1391,7 +1478,7 @@ components:
     InternalServerError:
       description: |
         Unexpected server error, such as the database or Redis being
-        unavailable, a failure to send an email, or the server not being
+        unavailable, a failure to queue an email, or the server not being
         configured (for example, a missing token signing key or
         `FRONTEND_URL`). A JSON body with a charset other than UTF-8/16/32 or an
         unsupported `Content-Encoding` also gets this response.
