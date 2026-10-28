@@ -4,7 +4,7 @@ import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { app } from '../../../app.js';
 import { pg } from '../../../lib/pg.js';
 import { LoginInput } from '@repo/shared';
-import { existingUser, seedUser, getCookie } from './utils/utils.js';
+import { clearThrottling, existingUser, seedUser, getCookie } from './utils/utils.js';
 import { expectErrorBody, expectNoAuthCookies } from './utils/expects.js';
 
 const ENDPOINT = '/api/auth/login';
@@ -36,6 +36,7 @@ function verifyToken(token: string) {
 }
 
 beforeEach(async () => {
+  await clearThrottling();
   await pg.query('TRUNCATE TABLE users CASCADE;');
 });
 

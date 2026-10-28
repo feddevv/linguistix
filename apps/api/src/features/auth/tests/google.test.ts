@@ -1,7 +1,7 @@
 import { describe, it, beforeEach, expect, vi } from 'vitest';
 import request from 'supertest';
 import { app } from '../../../app.js';
-import { getCookie } from './utils/utils.js';
+import { clearThrottling, getCookie } from './utils/utils.js';
 
 const ENDPOINT = '/api/auth/google';
 
@@ -12,7 +12,8 @@ function startGoogleAuth() {
   return request(app).get(ENDPOINT);
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  await clearThrottling();
   vi.stubEnv('GOOGLE_CLIENT_ID', GOOGLE_CLIENT_ID);
   vi.stubEnv('GOOGLE_REDIRECT_URI', GOOGLE_REDIRECT_URI);
 });

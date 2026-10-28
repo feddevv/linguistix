@@ -5,7 +5,7 @@ import { app } from '../../../app.js';
 import { pg } from '../../../lib/pg.js';
 import { redisClient } from '../../../lib/redis.js';
 import { UserRepo } from '../../user/user.repository.js';
-import { existingUser, seedUser } from './utils/utils.js';
+import { clearThrottling, existingUser, seedUser } from './utils/utils.js';
 import { expectErrorBody } from './utils/expects.js';
 import { emailQueue } from '../../../jobs/queues/email.queue.js';
 
@@ -41,11 +41,6 @@ function verifyEmail(token: string) {
 
 async function isVerified(userId: string) {
   return (await UserRepo.findUserById(userId))!.isVerified;
-}
-
-async function clearThrottling() {
-  const keys = [...(await redisClient.KEYS('cooldown:*')), ...(await redisClient.KEYS('rl:*'))];
-  if (keys.length) await redisClient.DEL(keys);
 }
 
 beforeEach(async () => {

@@ -4,6 +4,7 @@ import { pg } from '../../../../lib/pg.js';
 import { type Response } from 'supertest';
 import request from 'supertest';
 import { app } from '../../../../app.js';
+import { redisClient } from '../../../../lib/redis.js';
 
 export const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -64,4 +65,9 @@ export async function loginAs(user: { email: string; password: string }) {
     accessToken: getCookie(res, 'accessToken')!.value,
     refreshToken: getCookie(res, 'refreshToken')!.value,
   };
+}
+
+export async function clearThrottling() {
+  const keys = [...(await redisClient.KEYS('cooldown:*')), ...(await redisClient.KEYS('rl:*'))];
+  if (keys.length) await redisClient.DEL(keys);
 }

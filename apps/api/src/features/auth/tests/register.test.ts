@@ -5,7 +5,7 @@ import type { RegisterInput } from '@repo/shared';
 import { app } from '../../../app.js';
 import { pg } from '../../../lib/pg.js';
 import { UserRepo } from '../../user/user.repository.js';
-import { UUID_REGEX } from './utils/utils.js';
+import { clearThrottling, UUID_REGEX } from './utils/utils.js';
 import { hashString } from '../utils/hashing.js';
 import { expectErrorBody } from './utils/expects.js';
 import { emailQueue } from '../../../jobs/queues/email.queue.js';
@@ -43,6 +43,7 @@ function emailOfLength(length: number) {
 
 beforeEach(async () => {
   addToQueueMock.mockReset();
+  await clearThrottling();
   await pg.query('TRUNCATE TABLE users CASCADE;');
 });
 

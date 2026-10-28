@@ -5,7 +5,7 @@ import type { ErrorCode } from '@repo/shared';
 import { app } from '../../../app.js';
 import { pg } from '../../../lib/pg.js';
 import { hashString } from '../utils/hashing.js';
-import { seedUser } from './utils/utils.js';
+import { clearThrottling, seedUser } from './utils/utils.js';
 import { daysFromNow } from '../utils/index.js';
 import { expectErrorBody, expectNoAuthCookies } from './utils/expects.js';
 import { UserRepo } from '../../user/user.repository.js';
@@ -51,6 +51,7 @@ async function isVerified(userId: string) {
 
 beforeEach(async () => {
   vi.stubEnv('FRONTEND_URL', FRONTEND_URL);
+  await clearThrottling();
   await pg.query('TRUNCATE TABLE users CASCADE;');
 });
 
