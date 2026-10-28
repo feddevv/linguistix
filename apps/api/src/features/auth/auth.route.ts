@@ -83,3 +83,5 @@ router.post(
   resendVerificationLimiter,
   authController.resendVerification,
 );
+
+router.post('/auth/send-reset-password');

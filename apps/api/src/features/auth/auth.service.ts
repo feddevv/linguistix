@@ -275,3 +275,5 @@ export async function resendVerification(email: string) {
 
   return message;
 }
+
+export async function sendResetPassword() {}

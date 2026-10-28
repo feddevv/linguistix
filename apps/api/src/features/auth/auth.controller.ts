@@ -174,3 +174,9 @@ export async function resendVerification(
 
   res.json({ message });
 }
+
+export async function sendResetPassword(req: Request, res: Response) {
+  await authService.sendResetPassword();
+
+  res.json({ message: 'Confirmation link has been sent' });
+}
