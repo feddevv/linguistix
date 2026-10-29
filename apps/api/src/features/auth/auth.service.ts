@@ -12,7 +12,7 @@ import { jwtDecode } from 'jwt-decode';
 import { getGoogleTokens } from './google.service.js';
 import crypto from 'crypto';
 import { pg } from '../../lib/pg.js';
-import { daysFromNow, hashString } from './utils/index.js';
+import { daysFromNow, hashString, minutesFromNow } from './utils/index.js';
 import { emailQueue } from '../../jobs/queues/email.queue.js';
 
 function issueRandomToken() {
@@ -287,7 +287,7 @@ export async function forgotPassword(email: string) {
   await ResetPasswordVerificationTokenRepo.rotateToken(
     user.id,
     hashString(verificationToken),
-    daysFromNow(1),
+    minutesFromNow(30),
   );
 
   await emailQueue.add('reset-password', { email: user.email, verificationToken });
