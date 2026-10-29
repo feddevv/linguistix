@@ -263,12 +263,10 @@ export async function verifyEmail(token: string) {
 }
 
 export async function resendVerification(email: string) {
-  const message =
-    "If an account with this email exists and isn't verified yet, we've sent a new verification link.";
   const user = await UserRepo.findUserByEmail(email);
 
-  if (!user) return message;
-  else if (user?.isVerified) return message;
+  if (!user) return;
+  else if (user?.isVerified) return;
 
   const token = issueRandomToken();
   const expiresAt = daysFromNow(1);
@@ -276,8 +274,6 @@ export async function resendVerification(email: string) {
   await emailQueue.add('email-verification', { email: user.email, verificationToken: token });
 
   await EmailVerificationTokenRepo.rotateToken(user.id, hashString(token), expiresAt);
-
-  return message;
 }
 
 export async function forgotPassword(email: string) {

@@ -172,9 +172,11 @@ export async function resendVerification(
   req: Request<unknown, unknown, ResendVerificationBody>,
   res: Response,
 ) {
-  const message = await authService.resendVerification(req.body.email);
+  await authService.resendVerification(req.body.email);
 
-  res.json({ message });
+  res.json({
+    message: "If an account with this email exists and isn't verified yet, we've sent a new list.",
+  });
 }
 
 export async function forgotPassword(
@@ -183,7 +185,9 @@ export async function forgotPassword(
 ) {
   await authService.forgotPassword(req.body.email);
 
-  res.json({ message: 'Confirmation link has been sent' });
+  res.json({
+    message: "If an account with this email exists and is verified, we've sent a new list.",
+  });
 }
 
 export async function resetPassword(
