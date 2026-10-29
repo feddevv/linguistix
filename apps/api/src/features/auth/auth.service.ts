@@ -271,9 +271,9 @@ export async function resendVerification(email: string) {
   const token = issueRandomToken();
   const expiresAt = daysFromNow(1);
 
-  await emailQueue.add('email-verification', { email: user.email, verificationToken: token });
-
   await EmailVerificationTokenRepo.rotateToken(user.id, hashString(token), expiresAt);
+
+  await emailQueue.add('email-verification', { email: user.email, verificationToken: token });
 }
 
 export async function forgotPassword(email: string) {
