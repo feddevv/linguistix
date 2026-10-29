@@ -9,24 +9,10 @@ import {
   resetPasswordSchema,
   verifyEmailSchema,
 } from './auth.schemas.js';
-import { rateLimit } from 'express-rate-limit';
-import RedisStore from 'rate-limit-redis';
 import { redisClient } from '../../lib/redis.js';
-import { strictLimiter } from './auth.limiters.js';
+import { authLimiter, strictLimiter } from './auth.limiters.js';
 
 export const router: Router = Router();
-
-const loginLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000,
-  limit: 3,
-  standardHeaders: 'draft-8',
-  legacyHeaders: false,
-  message: { errorCode: 'REQUEST_LIMIT', message: 'Too many requests' },
-  store: new RedisStore({
-    prefix: 'rl:auth:login:',
-    sendCommand: (...args: string[]) => redisClient.sendCommand(args),
-  }),
-});
 
 function checkCooldown(subject: string) {
   return async (
@@ -52,13 +38,19 @@ function checkCooldown(subject: string) {
   };
 }
 
-router.post('/auth/register', validate({ body: registerSchema }), authController.register);
-router.post('/auth/login', loginLimiter, validate({ body: loginSchema }), authController.login);
+router.post(
+  '/auth/register',
+  authLimiter,
+  validate({ body: registerSchema }),
+  authController.register,
+);
+router.post('/auth/login', authLimiter, validate({ body: loginSchema }), authController.login);
 router.post('/auth/refresh', authController.refresh);
 router.post('/auth/logout', authController.logout);
 router.get('/auth/google', authController.google);
 router.get(
   '/auth/google/callback',
+  authLimiter,
   validate({ query: oauthSchema }),
   authController.googleCallback,
 );

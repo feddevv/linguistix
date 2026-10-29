@@ -14,3 +14,16 @@ export const strictLimiter = rateLimit({
   }),
   keyGenerator: (req) => `${req.ip}:${req.baseUrl}${req.path}`,
 });
+
+export const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { errorCode: 'REQUEST_LIMIT', message: 'Too many requests' },
+  store: new RedisStore({
+    prefix: 'rl:auth:',
+    sendCommand: (...args: string[]) => redisClient.sendCommand(args),
+  }),
+  keyGenerator: (req) => `${req.ip}:${req.baseUrl}${req.path}`,
+});
