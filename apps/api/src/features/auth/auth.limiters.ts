@@ -1,4 +1,4 @@
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import RedisStore from 'rate-limit-redis';
 import { redisClient } from '../../lib/redis.js';
 
@@ -12,7 +12,7 @@ export const strictLimiter = rateLimit({
     prefix: 'rl:strict:',
     sendCommand: (...args: string[]) => redisClient.sendCommand(args),
   }),
-  keyGenerator: (req) => `${req.ip}:${req.baseUrl}${req.path}`,
+  keyGenerator: (req) => `${ipKeyGenerator(req.ip!)}:${req.baseUrl}${req.path}`,
 });
 
 export const authLimiter = rateLimit({
@@ -25,5 +25,5 @@ export const authLimiter = rateLimit({
     prefix: 'rl:auth:',
     sendCommand: (...args: string[]) => redisClient.sendCommand(args),
   }),
-  keyGenerator: (req) => `${req.ip}:${req.baseUrl}${req.path}`,
+  keyGenerator: (req) => `${ipKeyGenerator(req.ip!)}:${req.baseUrl}${req.path}`,
 });
