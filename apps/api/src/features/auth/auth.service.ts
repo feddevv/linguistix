@@ -310,7 +310,9 @@ export async function resetPassword(email: string, verificationToken: string, ne
     if (!consumed)
       throw new AppError('INVALID_VERIFICATION_TOKEN', 'Invalid or expired verification token');
 
-    const updated = await UserRepo.updatePassword(consumed.userId, hashString(newPassword), client);
+    const sha256hash = hashString(newPassword);
+    const hashedPassword = await hash(sha256hash, 10);
+    const updated = await UserRepo.updatePassword(consumed.userId, hashedPassword, client);
 
     if (!updated) throw new AppError('USER_NOT_FOUND', "This user doesn't exist");
 
@@ -319,6 +321,6 @@ export async function resetPassword(email: string, verificationToken: string, ne
     await client.query('ROLLBACK');
     throw err;
   } finally {
-    await client.release();
+    client.release();
   }
 }
