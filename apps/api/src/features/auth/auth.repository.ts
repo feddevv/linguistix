@@ -60,6 +60,10 @@ class RefreshToken {
   async deleteRefreshToken(refreshTokenHash: string) {
     await pg.query(`DELETE FROM refresh_tokens WHERE refresh_token_hash = $1`, [refreshTokenHash]);
   }
+
+  async revoke(userId: string) {
+    await pg.query(`DELETE FROM refresh_tokens WHERE user_id = $1;`, [userId]);
+  }
 }
 
 interface CreateTokenParameters {

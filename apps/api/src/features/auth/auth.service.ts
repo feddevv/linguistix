@@ -312,6 +312,8 @@ export async function resetPassword(email: string, verificationToken: string, ne
 
     if (!updated) throw new AppError('USER_NOT_FOUND', "This user doesn't exist");
 
+    await RefreshTokenRepo.revoke(consumed.userId);
+
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');
