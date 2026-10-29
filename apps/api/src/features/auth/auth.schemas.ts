@@ -29,11 +29,21 @@ export const forgotPasswordSchema = z.object({
 
 export type ForgotPasswordBody = z.infer<typeof forgotPasswordSchema>;
 
-export const resetPasswordSchema = z.object({
-  email: resendVerificationSchema.shape.email,
-  verificationToken: verifyEmailSchema.shape.token,
-  newPassword: registerSchema.shape.password,
-  confirmPassword: registerSchema.shape.confirmPassword,
-});
+export const resetPasswordSchema = z
+  .object({
+    email: resendVerificationSchema.shape.email,
+    verificationToken: verifyEmailSchema.shape.token,
+    newPassword: registerSchema.shape.password,
+    confirmPassword: registerSchema.shape.confirmPassword,
+  })
+  .superRefine(({ newPassword, confirmPassword }, ctx) => {
+    if (newPassword !== confirmPassword) {
+      ctx.addIssue({
+        code: 'custom',
+        message: "Passwords don't match",
+        path: ['confirmPassword'],
+      });
+    }
+  });
 
 export type ResetPasswordBody = z.infer<typeof resetPasswordSchema>;
