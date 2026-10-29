@@ -29,6 +29,7 @@ const limiter = rateLimit({
     prefix: 'rl:global:',
     sendCommand: (...args: string[]) => redisClient.sendCommand(args),
   }),
+  keyGenerator: (req) => `${req.ip}:${req.baseUrl}:${req.path}`,
 });
 app.use(limiter);
 
