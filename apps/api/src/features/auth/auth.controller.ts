@@ -194,8 +194,8 @@ export async function resetPassword(
   req: Request<unknown, unknown, ResetPasswordBody>,
   res: Response,
 ) {
-  const { email, newPassword, verificationToken } = req.body;
-  await authService.resetPassword(email, verificationToken, newPassword);
+  const { newPassword, verificationToken } = req.body;
+  await authService.resetPassword(verificationToken, newPassword);
 
   res.json({ message: 'Password has been reset' });
 }

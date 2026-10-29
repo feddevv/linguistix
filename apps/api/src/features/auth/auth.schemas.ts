@@ -31,7 +31,6 @@ export type ForgotPasswordBody = z.infer<typeof forgotPasswordSchema>;
 
 export const resetPasswordSchema = z
   .object({
-    email: resendVerificationSchema.shape.email,
     verificationToken: verifyEmailSchema.shape.token,
     newPassword: registerSchema.shape.password,
     confirmPassword: registerSchema.shape.confirmPassword,

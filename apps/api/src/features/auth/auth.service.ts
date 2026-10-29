@@ -293,7 +293,7 @@ export async function forgotPassword(email: string) {
   await emailQueue.add('reset-password', { email: user.email, verificationToken });
 }
 
-export async function resetPassword(email: string, verificationToken: string, newPassword: string) {
+export async function resetPassword(verificationToken: string, newPassword: string) {
   const hashedToken = hashString(verificationToken);
 
   const client = await pg.connect();
