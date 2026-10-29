@@ -299,7 +299,7 @@ export async function resetPassword(email: string, verificationToken: string, ne
   const client = await pg.connect();
 
   try {
-    client.query('BEGIN');
+    await client.query('BEGIN');
 
     const consumed = await ResetPasswordVerificationTokenRepo.consumeToken(hashedToken, client);
 
