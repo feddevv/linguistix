@@ -297,8 +297,28 @@ export async function forgotPassword(email: string) {
   await emailQueue.add('reset-password', { email: user.email, verificationToken });
 }
 
-export async function resetPassword(
-  email: string,
-  verificationToken: string,
-  newPassword: string,
-) {}
+export async function resetPassword(email: string, verificationToken: string, newPassword: string) {
+  const hashedToken = hashString(verificationToken);
+
+  const client = await pg.connect();
+
+  try {
+    client.query('BEGIN');
+
+    const consumed = await ResetPasswordVerificationTokenRepo.consumeToken(hashedToken, client);
+
+    if (!consumed)
+      throw new AppError('INVALID_VERIFICATION_TOKEN', 'Invalid or expired verification token');
+
+    const updated = await UserRepo.updatePassword(consumed.userId, hashString(newPassword), client);
+
+    if (!updated) throw new AppError('USER_NOT_FOUND', "This user doesn't exist");
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    await client.release();
+  }
+}

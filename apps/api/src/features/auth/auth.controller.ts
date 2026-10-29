@@ -12,6 +12,7 @@ import type {
   ResendVerificationBody,
   ForgotPasswordBody,
   VerifyEmailQueryString,
+  ResetPasswordBody,
 } from './auth.schemas.js';
 import { AppError } from '../../errors/AppError.js';
 import type { ErrorCode } from '@repo/shared';
@@ -183,4 +184,14 @@ export async function forgotPassword(
   await authService.forgotPassword(req.body.email);
 
   res.json({ message: 'Confirmation link has been sent' });
+}
+
+export async function resetPassword(
+  req: Request<unknown, unknown, ResetPasswordBody>,
+  res: Response,
+) {
+  const { email, newPassword, verificationToken } = req.body;
+  await authService.resetPassword(email, verificationToken, newPassword);
+
+  res.json({ message: 'Password has been reset' });
 }

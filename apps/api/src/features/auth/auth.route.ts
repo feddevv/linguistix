@@ -95,5 +95,5 @@ router.post(
 router.post(
   '/auth/reset-password',
   validate({ body: resetPasswordSchema }),
-  authController.forgotPassword,
+  authController.resetPassword,
 );
