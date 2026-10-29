@@ -8,7 +8,6 @@ import {
   resendVerificationSchema,
   resetPasswordSchema,
   verifyEmailSchema,
-  type ResendVerificationBody,
 } from './auth.schemas.js';
 import { rateLimit } from 'express-rate-limit';
 import RedisStore from 'rate-limit-redis';
@@ -29,7 +28,7 @@ const loginLimiter = rateLimit({
 });
 
 const resendVerificationLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000,
+  windowMs: 3 * 60 * 1000,
   limit: 3,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
@@ -40,26 +39,28 @@ const resendVerificationLimiter = rateLimit({
   }),
 });
 
-async function checkEmailCooldown(
-  req: Request<unknown, unknown, ResendVerificationBody>,
-  res: Response,
-  next: NextFunction,
-) {
-  const key = `cooldown:${req.body.email}:send_email`;
-  const acquired = await redisClient.SET(key, '1', {
-    condition: 'NX',
-    expiration: { type: 'EX', value: 60 },
-  });
-  if (!acquired) {
-    const ttl = await redisClient.TTL(key);
-    return res.status(429).json({
-      errorCode: 'COOLDOWN',
-      message: 'Too many requests. Please try again later.',
-      retryAfter: ttl,
+function checkCooldown(subject: string) {
+  return async (
+    req: Request<unknown, unknown, { email: string }>,
+    res: Response,
+    next: NextFunction,
+  ) => {
+    const key = `cooldown:${req.body.email}:${subject}`;
+    const acquired = await redisClient.SET(key, '1', {
+      condition: 'NX',
+      expiration: { type: 'EX', value: 60 },
     });
-  }
+    if (!acquired) {
+      const ttl = await redisClient.TTL(key);
+      return res.status(429).json({
+        errorCode: 'COOLDOWN',
+        message: 'Too many requests. Please try again later.',
+        retryAfter: ttl,
+      });
+    }
 
-  next();
+    next();
+  };
 }
 
 router.post('/auth/register', validate({ body: registerSchema }), authController.register);
@@ -81,7 +82,7 @@ router.get(
 router.post(
   '/auth/resend-verification',
   validate({ body: resendVerificationSchema }),
-  checkEmailCooldown,
+  checkCooldown('resend-email-verification'),
   resendVerificationLimiter,
   authController.resendVerification,
 );
@@ -89,6 +90,7 @@ router.post(
 router.post(
   '/auth/forgot-password',
   validate({ body: forgotPasswordSchema }),
+  checkCooldown('reset-password'),
   authController.forgotPassword,
 );
 
