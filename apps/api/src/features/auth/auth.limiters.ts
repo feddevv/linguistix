@@ -1,0 +1,16 @@
+import rateLimit from 'express-rate-limit';
+import RedisStore from 'rate-limit-redis';
+import { redisClient } from '../../lib/redis.js';
+
+export const strictLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 3,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { errorCode: 'REQUEST_LIMIT', message: 'Too many requests' },
+  store: new RedisStore({
+    prefix: 'rl:strict:',
+    sendCommand: (...args: string[]) => redisClient.sendCommand(args),
+  }),
+  keyGenerator: (req) => `${req.ip}:${req.baseUrl}${req.path}`,
+});

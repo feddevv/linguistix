@@ -12,6 +12,7 @@ import {
 import { rateLimit } from 'express-rate-limit';
 import RedisStore from 'rate-limit-redis';
 import { redisClient } from '../../lib/redis.js';
+import { strictLimiter } from './auth.limiters.js';
 
 export const router: Router = Router();
 
@@ -23,18 +24,6 @@ const loginLimiter = rateLimit({
   message: { errorCode: 'REQUEST_LIMIT', message: 'Too many requests' },
   store: new RedisStore({
     prefix: 'rl:auth:login:',
-    sendCommand: (...args: string[]) => redisClient.sendCommand(args),
-  }),
-});
-
-const resendVerificationLimiter = rateLimit({
-  windowMs: 3 * 60 * 1000,
-  limit: 3,
-  standardHeaders: 'draft-8',
-  legacyHeaders: false,
-  message: { errorCode: 'REQUEST_LIMIT', message: 'Too many requests' },
-  store: new RedisStore({
-    prefix: 'rl:auth:resendVerification:',
     sendCommand: (...args: string[]) => redisClient.sendCommand(args),
   }),
 });
@@ -81,14 +70,15 @@ router.get(
 
 router.post(
   '/auth/resend-verification',
+  strictLimiter,
   validate({ body: resendVerificationSchema }),
   checkCooldown('resend-email-verification'),
-  resendVerificationLimiter,
   authController.resendVerification,
 );
 
 router.post(
   '/auth/forgot-password',
+  strictLimiter,
   validate({ body: forgotPasswordSchema }),
   checkCooldown('reset-password'),
   authController.forgotPassword,
@@ -96,6 +86,7 @@ router.post(
 
 router.post(
   '/auth/reset-password',
+  strictLimiter,
   validate({ body: resetPasswordSchema }),
   authController.resetPassword,
 );
