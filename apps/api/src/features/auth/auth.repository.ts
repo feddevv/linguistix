@@ -73,8 +73,8 @@ class VerificationToken {
 
     const multi = redisClient.multi();
     if (prevHash) await redisClient.DEL(`verificationToken:${prevHash}:${subject}`);
-    await redisClient.SETEX(`verificationToken:${tokenHash}:${subject}`, ttlSeconds, userId);
-    await redisClient.SETEX(userKey, ttlSeconds, tokenHash);
+    multi.SETEX(`verificationToken:${tokenHash}:${subject}`, ttlSeconds, userId);
+    multi.SETEX(userKey, ttlSeconds, tokenHash);
     await multi.exec();
   }
 
