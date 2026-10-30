@@ -35,39 +35,26 @@ export async function register({ firstName, lastName, password, email, role }: R
   const sha256hash = hashString(password);
   const passwordHash = await hash(sha256hash, 10);
 
-  const client = await pg.connect();
-  try {
-    await client.query('BEGIN');
+  const user = await UserRepo.create({
+    firstName,
+    lastName,
+    password: passwordHash,
+    email,
+    role,
+    isVerified: false,
+  });
 
-    const user = await UserRepo.create({
-      firstName,
-      lastName,
-      password: passwordHash,
-      email,
-      role,
-      isVerified: false,
-      client,
-    });
+  const verificationToken = issueRandomToken();
 
-    const verificationToken = issueRandomToken();
+  await VerificationTokenRepo.create({
+    tokenHash: hashString(verificationToken),
+    subject: 'email',
+    userId: user.id,
+  });
 
-    await VerificationTokenRepo.create({
-      tokenHash: hashString(verificationToken),
-      subject: 'email',
-      userId: user.id,
-    });
+  await emailQueue.add('email-verification', { email: user.email, verificationToken });
 
-    await client.query('COMMIT');
-
-    await emailQueue.add('email-verification', { email: user.email, verificationToken });
-
-    return user;
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
+  return user;
 }
 
 export async function login({ email, password }: LoginInput) {
