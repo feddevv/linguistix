@@ -62,17 +62,17 @@ router.get(
 
 router.post(
   '/auth/resend-verification',
+  checkCooldown('resend-email-verification'),
   strictLimiter,
   validate({ body: resendVerificationSchema }),
-  checkCooldown('resend-email-verification'),
   authController.resendVerification,
 );
 
 router.post(
   '/auth/forgot-password',
+  checkCooldown('reset-password'),
   strictLimiter,
   validate({ body: forgotPasswordSchema }),
-  checkCooldown('reset-password'),
   authController.forgotPassword,
 );
 
