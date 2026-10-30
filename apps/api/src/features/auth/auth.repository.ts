@@ -68,13 +68,21 @@ interface CreateTokenParameters {
 
 class VerificationToken {
   async create({ tokenHash, userId, subject, ttlSeconds }: CreateTokenParameters) {
+    const userKey = `verificationToken:user:${userId}:${subject}`;
+    const prevHash = await redisClient.GETDEL(userKey);
+
+    const multi = redisClient.multi();
+    if (prevHash) await redisClient.DEL(`verificationToken:${prevHash}:${subject}`);
     await redisClient.SETEX(`verificationToken:${tokenHash}:${subject}`, ttlSeconds, userId);
+    await redisClient.SETEX(userKey, ttlSeconds, tokenHash);
+    await multi.exec();
   }
 
   async consume(tokenHash: string, subject: string) {
-    const consumed = await redisClient.GETDEL(`verificationToken:${tokenHash}:${subject}`);
+    const userId = await redisClient.GETDEL(`verificationToken:${tokenHash}:${subject}`);
+    if (userId) await redisClient.DEL(`verificationToken:user:${userId}:${subject}`);
 
-    return consumed;
+    return userId;
   }
 }
 
