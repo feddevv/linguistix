@@ -276,12 +276,13 @@ export async function resetPassword(verificationToken: string, newPassword: stri
   if (!consumed)
     throw new AppError('INVALID_VERIFICATION_TOKEN', 'Invalid or expired verification token');
 
+  const sha256hash = hashString(newPassword);
+  const hashedPassword = await hash(sha256hash, 10);
+
   const client = await pg.connect();
   try {
     await client.query('BEGIN');
 
-    const sha256hash = hashString(newPassword);
-    const hashedPassword = await hash(sha256hash, 10);
     const updated = await UserRepo.updatePassword(consumed, hashedPassword, client);
 
     if (!updated) throw new AppError('USER_NOT_FOUND', "This user doesn't exist");
