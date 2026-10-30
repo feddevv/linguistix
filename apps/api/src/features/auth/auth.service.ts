@@ -268,16 +268,15 @@ export async function forgotPassword(email: string) {
 export async function resetPassword(verificationToken: string, newPassword: string) {
   const hashedToken = hashString(verificationToken);
 
-  const client = await pg.connect();
+  const consumed = await VerificationTokenRepo.consume(hashedToken, 'reset-password');
 
+  if (!consumed)
+    throw new AppError('INVALID_VERIFICATION_TOKEN', 'Invalid or expired verification token');
+
+  const client = await pg.connect();
   try {
     await client.query('BEGIN');
-
-    const consumed = await VerificationTokenRepo.consume(hashedToken, 'reset-password');
-
-    if (!consumed)
-      throw new AppError('INVALID_VERIFICATION_TOKEN', 'Invalid or expired verification token');
-
+    
     const sha256hash = hashString(newPassword);
     const hashedPassword = await hash(sha256hash, 10);
     const updated = await UserRepo.updatePassword(consumed, hashedPassword, client);
