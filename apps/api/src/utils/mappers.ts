@@ -1,9 +1,4 @@
-import type {
-  RefreshTokenRow,
-  RefreshTokenDomain,
-  EmailVerificationTokenRow,
-  EmailVerificationTokenDto,
-} from '../features/auth/auth.types.js';
+import type { RefreshTokenRow, RefreshTokenDomain } from '../features/auth/auth.types.js';
 import type { UserDomain, UserRow } from '../features/user/user.types.js';
 
 export function toUserDomain(data: UserRow): UserDomain {
@@ -35,16 +30,4 @@ export function toRefreshTokenDomain(data: RefreshTokenRow): RefreshTokenDomain 
 
 export function toRefreshTokenDomainList(data: RefreshTokenRow[]): RefreshTokenDomain[] {
   return data.map((row) => toRefreshTokenDomain(row));
-}
-
-export function toEmailVerificationTokenDto(
-  data: EmailVerificationTokenRow,
-): EmailVerificationTokenDto {
-  return {
-    id: data.id,
-    expiresAt: data.expires_at,
-    tokenHash: data.token_hash,
-    usedAt: data.used_at,
-    userId: data.user_id,
-  };
 }

@@ -1,16 +1,7 @@
 import type { PoolClient } from 'pg';
 import { pg } from '../../lib/pg.js';
-import {
-  toEmailVerificationTokenDto,
-  toRefreshTokenDomain,
-  toRefreshTokenDomainList,
-} from '../../utils/mappers.js';
-import type {
-  EmailVerificationTokenRow,
-  RefreshTokenInputDto,
-  RefreshTokenRow,
-  ResetPasswordVerificationTokenRow,
-} from './auth.types.js';
+import { toRefreshTokenDomain, toRefreshTokenDomainList } from '../../utils/mappers.js';
+import type { RefreshTokenInputDto, RefreshTokenRow } from './auth.types.js';
 import { redisClient } from '../../lib/redis.js';
 
 class RefreshToken {
@@ -69,111 +60,13 @@ class RefreshToken {
 }
 
 interface CreateTokenParameters {
-  expiresAt: Date;
   tokenHash: string;
   userId: string;
-  client?: PoolClient;
-}
-
-class EmailVerificationToken {
-  async createToken({ expiresAt, tokenHash, userId, client }: CreateTokenParameters) {
-    const executor = client ?? pg;
-    const token = await executor.query<EmailVerificationTokenRow>(
-      `
-        INSERT INTO email_verification_tokens (expires_at, token_hash, user_id)
-        VALUES ($1, $2, $3) 
-        RETURNING *;
-      `,
-      [expiresAt, tokenHash, userId],
-    );
-
-    return toEmailVerificationTokenDto(token.rows[0]!);
-  }
-
-  async consumeToken(hashedToken: string, client?: PoolClient) {
-    const executor = client ?? pg;
-    const token = await executor.query<Pick<EmailVerificationTokenRow, 'user_id'>>(
-      `UPDATE email_verification_tokens SET used_at = NOW() 
-      WHERE token_hash = $1 AND used_at IS NULL AND expires_at > NOW()
-      RETURNING user_id;`,
-      [hashedToken],
-    );
-
-    if (!token.rows[0]) return null;
-
-    return { userId: token.rows[0].user_id };
-  }
-
-  async rotateToken(userId: string, newTokenHash: string, newExpiresAt: Date) {
-    const token = await pg.query(
-      `
-        INSERT INTO email_verification_tokens (token_hash, expires_at, user_id)
-        VALUES ($1, $2, $3)
-        ON CONFLICT (user_id) DO UPDATE
-        SET token_hash = EXCLUDED.token_hash, expires_at = EXCLUDED.expires_at, used_at = NULL;
-      `,
-      [newTokenHash, newExpiresAt, userId],
-    );
-
-    return token.rowCount;
-  }
-}
-
-// WILL BE REPLACED WITH REDIS
-class ResetPasswordVerificationToken {
-  async createToken({ expiresAt, tokenHash, userId, client }: CreateTokenParameters) {
-    const executor = client ?? pg;
-    const token = await executor.query<ResetPasswordVerificationTokenRow>(
-      `
-        INSERT INTO reset_password_verification_tokens (expires_at, token_hash, user_id)
-        VALUES ($1, $2, $3) 
-        RETURNING *;
-      `,
-      [expiresAt, tokenHash, userId],
-    );
-
-    return toEmailVerificationTokenDto(token.rows[0]!);
-  }
-
-  async consumeToken(hashedToken: string, client?: PoolClient) {
-    const executor = client ?? pg;
-    const token = await executor.query<Pick<ResetPasswordVerificationTokenRow, 'user_id'>>(
-      `UPDATE reset_password_verification_tokens SET used_at = NOW() 
-      WHERE token_hash = $1 AND used_at IS NULL AND expires_at > NOW()
-      RETURNING user_id;`,
-      [hashedToken],
-    );
-
-    if (!token.rows[0]) return null;
-
-    return { userId: token.rows[0].user_id };
-  }
-
-  async rotateToken(userId: string, newTokenHash: string, newExpiresAt: Date) {
-    const token = await pg.query(
-      `
-        INSERT INTO reset_password_verification_tokens (token_hash, expires_at, user_id)
-        VALUES ($1, $2, $3)
-        ON CONFLICT (user_id) DO UPDATE 
-        SET token_hash = EXCLUDED.token_hash, expires_at = EXCLUDED.expires_at, used_at = NULL;
-      `,
-      [newTokenHash, newExpiresAt, userId],
-    );
-
-    return token.rowCount;
-  }
+  subject: string;
 }
 
 class VerificationToken {
-  async createToken({
-    tokenHash,
-    userId,
-    subject,
-  }: {
-    tokenHash: string;
-    userId: string;
-    subject: string;
-  }) {
+  async createToken({ tokenHash, userId, subject }: CreateTokenParameters) {
     await redisClient.SETEX(`verificationToken:${tokenHash}:${subject}`, 15 * 60 * 1000, userId);
   }
 
@@ -185,6 +78,4 @@ class VerificationToken {
 }
 
 export const RefreshTokenRepo = new RefreshToken();
-export const EmailVerificationTokenRepo = new EmailVerificationToken();
-export const ResetPasswordVerificationTokenRepo = new ResetPasswordVerificationToken();
 export const VerificationTokenRepo = new VerificationToken();
