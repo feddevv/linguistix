@@ -50,6 +50,7 @@ export async function register({ firstName, lastName, password, email, role }: R
     tokenHash: hashString(verificationToken),
     subject: 'email',
     userId: user.id,
+    ttlSeconds: 15 * 60, // 15 minutes
   });
 
   await emailQueue.add('email-verification', { email: user.email, verificationToken });
@@ -243,6 +244,7 @@ export async function resendVerification(email: string) {
     tokenHash: hashString(verificationToken),
     subject: 'email',
     userId: user.id,
+    ttlSeconds: 15 * 60, // 15 minutes
   });
 
   await emailQueue.add('email-verification', { email: user.email, verificationToken });
@@ -260,6 +262,7 @@ export async function forgotPassword(email: string) {
     tokenHash: hashString(verificationToken),
     subject: 'reset-password',
     userId: user.id,
+    ttlSeconds: 15 * 60, // 15 minutes
   });
 
   await emailQueue.add('reset-password', { email: user.email, verificationToken });
@@ -276,7 +279,7 @@ export async function resetPassword(verificationToken: string, newPassword: stri
   const client = await pg.connect();
   try {
     await client.query('BEGIN');
-    
+
     const sha256hash = hashString(newPassword);
     const hashedPassword = await hash(sha256hash, 10);
     const updated = await UserRepo.updatePassword(consumed, hashedPassword, client);

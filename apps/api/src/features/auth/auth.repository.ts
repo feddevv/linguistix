@@ -63,11 +63,12 @@ interface CreateTokenParameters {
   tokenHash: string;
   userId: string;
   subject: string;
+  ttlSeconds: number;
 }
 
 class VerificationToken {
-  async create({ tokenHash, userId, subject }: CreateTokenParameters) {
-    await redisClient.SETEX(`verificationToken:${tokenHash}:${subject}`, 15 * 60 * 1000, userId);
+  async create({ tokenHash, userId, subject, ttlSeconds }: CreateTokenParameters) {
+    await redisClient.SETEX(`verificationToken:${tokenHash}:${subject}`, ttlSeconds, userId);
   }
 
   async consume(tokenHash: string, subject: string) {
