@@ -1,9 +1,4 @@
-import {
-  EmailVerificationTokenRepo,
-  RefreshTokenRepo,
-  ResetPasswordVerificationTokenRepo,
-  VerificationTokenRepo,
-} from './auth.repository.js';
+import { RefreshTokenRepo, VerificationTokenRepo } from './auth.repository.js';
 import type { LoginInput, RegisterInput } from '@repo/shared';
 import { compare, hash } from 'bcrypt';
 import { AppError } from '../../errors/AppError.js';
@@ -13,7 +8,7 @@ import { jwtDecode } from 'jwt-decode';
 import { getGoogleTokens } from './google.service.js';
 import crypto from 'crypto';
 import { pg } from '../../lib/pg.js';
-import { daysFromNow, hashString, minutesFromNow } from './utils/index.js';
+import { daysFromNow, hashString } from './utils/index.js';
 import { emailQueue } from '../../jobs/queues/email.queue.js';
 
 function issueRandomToken() {
@@ -267,12 +262,15 @@ export async function resendVerification(email: string) {
   if (!user) return;
   else if (user?.isVerified) return;
 
-  const token = issueRandomToken();
-  const expiresAt = daysFromNow(1);
+  const verificationToken = issueRandomToken();
 
-  await EmailVerificationTokenRepo.rotateToken(user.id, hashString(token), expiresAt);
+  await VerificationTokenRepo.createToken({
+    tokenHash: hashString(verificationToken),
+    subject: 'email',
+    userId: user.id,
+  });
 
-  await emailQueue.add('email-verification', { email: user.email, verificationToken: token });
+  await emailQueue.add('email-verification', { email: user.email, verificationToken });
 }
 
 export async function forgotPassword(email: string) {
@@ -283,11 +281,11 @@ export async function forgotPassword(email: string) {
 
   const verificationToken = issueRandomToken();
 
-  await ResetPasswordVerificationTokenRepo.rotateToken(
-    user.id,
-    hashString(verificationToken),
-    minutesFromNow(30),
-  );
+  await VerificationTokenRepo.createToken({
+    tokenHash: hashString(verificationToken),
+    subject: 'reset-password',
+    userId: user.id,
+  });
 
   await emailQueue.add('reset-password', { email: user.email, verificationToken });
 }
@@ -300,18 +298,18 @@ export async function resetPassword(verificationToken: string, newPassword: stri
   try {
     await client.query('BEGIN');
 
-    const consumed = await ResetPasswordVerificationTokenRepo.consumeToken(hashedToken, client);
+    const consumed = await VerificationTokenRepo.consumeToken(hashedToken, 'reset-password');
 
     if (!consumed)
       throw new AppError('INVALID_VERIFICATION_TOKEN', 'Invalid or expired verification token');
 
     const sha256hash = hashString(newPassword);
     const hashedPassword = await hash(sha256hash, 10);
-    const updated = await UserRepo.updatePassword(consumed.userId, hashedPassword, client);
+    const updated = await UserRepo.updatePassword(consumed, hashedPassword, client);
 
     if (!updated) throw new AppError('USER_NOT_FOUND', "This user doesn't exist");
 
-    await RefreshTokenRepo.revoke(consumed.userId);
+    await RefreshTokenRepo.revoke(consumed);
 
     await client.query('COMMIT');
   } catch (err) {
