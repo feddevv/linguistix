@@ -286,7 +286,7 @@ export async function resetPassword(verificationToken: string, newPassword: stri
 
     if (!updated) throw new AppError('USER_NOT_FOUND', "This user doesn't exist");
 
-    await RefreshTokenRepo.revoke(consumed);
+    await RefreshTokenRepo.revoke(consumed, client);
 
     await client.query('COMMIT');
   } catch (err) {
