@@ -2,6 +2,7 @@ import {
   EmailVerificationTokenRepo,
   RefreshTokenRepo,
   ResetPasswordVerificationTokenRepo,
+  VerificationTokenRepo,
 } from './auth.repository.js';
 import type { LoginInput, RegisterInput } from '@repo/shared';
 import { compare, hash } from 'bcrypt';
@@ -54,13 +55,11 @@ export async function register({ firstName, lastName, password, email, role }: R
     });
 
     const verificationToken = issueRandomToken();
-    const expiresAt = daysFromNow(1);
 
-    await EmailVerificationTokenRepo.createToken({
+    await VerificationTokenRepo.createToken({
       tokenHash: hashString(verificationToken),
+      subject: 'email',
       userId: user.id,
-      expiresAt,
-      client,
     });
 
     await client.query('COMMIT');

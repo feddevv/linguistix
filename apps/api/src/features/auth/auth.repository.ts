@@ -11,6 +11,7 @@ import type {
   RefreshTokenRow,
   ResetPasswordVerificationTokenRow,
 } from './auth.types.js';
+import { redisClient } from '../../lib/redis.js';
 
 class RefreshToken {
   async findRefreshTokenByHash(refreshTokenHash: string) {
@@ -108,7 +109,7 @@ class EmailVerificationToken {
       `
         INSERT INTO email_verification_tokens (token_hash, expires_at, user_id)
         VALUES ($1, $2, $3)
-        ON CONFLICT (user_id) DO UPDATE 
+        ON CONFLICT (user_id) DO UPDATE
         SET token_hash = EXCLUDED.token_hash, expires_at = EXCLUDED.expires_at, used_at = NULL;
       `,
       [newTokenHash, newExpiresAt, userId],
@@ -163,6 +164,27 @@ class ResetPasswordVerificationToken {
   }
 }
 
+class VerificationToken {
+  async createToken({
+    tokenHash,
+    userId,
+    subject,
+  }: {
+    tokenHash: string;
+    userId: string;
+    subject: string;
+  }) {
+    await redisClient.SETEX(`verificationToken:${tokenHash}:${subject}`, 15 * 60 * 1000, userId);
+  }
+
+  async consumeToken(tokenHash: string, subject: string) {
+    const consumed = await redisClient.GETDEL(`verificationToken:${tokenHash}:${subject}`);
+
+    return consumed;
+  }
+}
+
 export const RefreshTokenRepo = new RefreshToken();
 export const EmailVerificationTokenRepo = new EmailVerificationToken();
 export const ResetPasswordVerificationTokenRepo = new ResetPasswordVerificationToken();
+export const VerificationTokenRepo = new VerificationToken();
