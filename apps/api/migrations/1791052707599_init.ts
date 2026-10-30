@@ -100,22 +100,6 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         expires_at TIMESTAMP NOT NULL,
         user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE
       );
-
-      CREATE TABLE IF NOT EXISTS "email_verification_tokens" (
-        id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-        token_hash TEXT NOT NULL UNIQUE,
-        expires_at TIMESTAMP NOT NULL,
-        used_at TIMESTAMP,
-        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE UNIQUE
-      );
-
-      CREATE TABLE IF NOT EXISTS "reset_password_verification_tokens" (
-        id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-        token_hash TEXT NOT NULL UNIQUE,
-        expires_at TIMESTAMP NOT NULL,
-        used_at TIMESTAMP,
-        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE UNIQUE
-      );
     `,
   );
 }
@@ -130,8 +114,6 @@ export async function down(pgm: MigrationBuilder): Promise<void> {
       DROP TABLE IF EXISTS "words";
       DROP TABLE IF EXISTS rooms;
       DROP TABLE IF EXISTS refresh_tokens;
-      DROP TABLE IF EXISTS email_verification_tokens;
-      DROP TABLE IF EXISTS reset_password_verification_tokens;
       DROP TABLE IF EXISTS users;
 
       DROP TYPE IF EXISTS user_role;
