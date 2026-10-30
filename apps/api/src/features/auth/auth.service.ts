@@ -51,7 +51,7 @@ export async function register({ firstName, lastName, password, email, role }: R
 
     const verificationToken = issueRandomToken();
 
-    await VerificationTokenRepo.createToken({
+    await VerificationTokenRepo.create({
       tokenHash: hashString(verificationToken),
       subject: 'email',
       userId: user.id,
@@ -230,7 +230,7 @@ export async function verifyEmail(token: string) {
   try {
     await client.query('BEGIN');
 
-    const consumed = await VerificationTokenRepo.consumeToken(hashedToken, 'email');
+    const consumed = await VerificationTokenRepo.consume(hashedToken, 'email');
 
     if (!consumed)
       throw new AppError(
@@ -264,7 +264,7 @@ export async function resendVerification(email: string) {
 
   const verificationToken = issueRandomToken();
 
-  await VerificationTokenRepo.createToken({
+  await VerificationTokenRepo.create({
     tokenHash: hashString(verificationToken),
     subject: 'email',
     userId: user.id,
@@ -281,7 +281,7 @@ export async function forgotPassword(email: string) {
 
   const verificationToken = issueRandomToken();
 
-  await VerificationTokenRepo.createToken({
+  await VerificationTokenRepo.create({
     tokenHash: hashString(verificationToken),
     subject: 'reset-password',
     userId: user.id,
@@ -298,7 +298,7 @@ export async function resetPassword(verificationToken: string, newPassword: stri
   try {
     await client.query('BEGIN');
 
-    const consumed = await VerificationTokenRepo.consumeToken(hashedToken, 'reset-password');
+    const consumed = await VerificationTokenRepo.consume(hashedToken, 'reset-password');
 
     if (!consumed)
       throw new AppError('INVALID_VERIFICATION_TOKEN', 'Invalid or expired verification token');
