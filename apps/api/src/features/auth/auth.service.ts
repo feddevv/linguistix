@@ -213,34 +213,22 @@ export async function handleGoogleCallback(code: string) {
 export async function verifyEmail(token: string) {
   const hashedToken = hashString(token);
 
-  const client = await pg.connect();
-  try {
-    await client.query('BEGIN');
+  const consumed = await VerificationTokenRepo.consume(hashedToken, 'email');
 
-    const consumed = await VerificationTokenRepo.consume(hashedToken, 'email');
+  if (!consumed)
+    throw new AppError(
+      'INVALID_VERIFICATION_TOKEN',
+      'Provided email verification token is invalid or has expired',
+    );
+  else {
+    const user = await UserRepo.findUserById(consumed);
 
-    if (!consumed)
-      throw new AppError(
-        'INVALID_VERIFICATION_TOKEN',
-        'Provided email verification token is invalid or has expired',
-      );
-    else {
-      const user = await UserRepo.findUserById(consumed);
-
-      if (!user) throw new AppError('USER_NOT_FOUND', "This user doesn't exist");
-      else if (user.isVerified)
-        throw new AppError('EMAIL_ALREADY_VERIFIED', 'This email is already verified');
-    }
-
-    await UserRepo.updateIsVerified(true, consumed, client);
-
-    await client.query('COMMIT');
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
+    if (!user) throw new AppError('USER_NOT_FOUND', "This user doesn't exist");
+    else if (user.isVerified)
+      throw new AppError('EMAIL_ALREADY_VERIFIED', 'This email is already verified');
   }
+
+  await UserRepo.updateIsVerified(true, consumed);
 }
 
 export async function resendVerification(email: string) {
