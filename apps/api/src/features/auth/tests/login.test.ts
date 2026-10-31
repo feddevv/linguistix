@@ -4,8 +4,9 @@ import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { app } from '../../../app.js';
 import { pg } from '../../../lib/pg.js';
 import { LoginInput } from '@repo/shared';
-import { clearThrottling, existingUser, seedUser, getCookie } from './utils/utils.js';
+import { clearThrottling, getCookie } from './utils/utils.js';
 import { expectErrorBody, expectNoAuthCookies } from './utils/expects.js';
+import { seedUser, existingUser } from './utils/seeds.js';
 
 const ENDPOINT = '/api/auth/login';
 const INVALID_CREDENTIALS = 'Email or password is incorrect';

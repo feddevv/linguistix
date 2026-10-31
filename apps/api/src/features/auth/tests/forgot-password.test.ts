@@ -4,9 +4,10 @@ import { app } from '../../../app.js';
 import { pg } from '../../../lib/pg.js';
 import { redisClient } from '../../../lib/redis.js';
 import { UserRepo } from '../../user/user.repository.js';
-import { clearThrottling, clearVerificationTokens, seedUser, randomIp } from './utils/utils.js';
+import { clearThrottling, clearVerificationTokens, randomIp } from './utils/utils.js';
 import { expectErrorBody } from './utils/expects.js';
 import { emailQueue } from '../../../jobs/queues/email.queue.js';
+import { seedUser } from './utils/seeds.js';
 
 const ENDPOINT = '/api/auth/forgot-password';
 const GENERIC_MESSAGE =
@@ -17,7 +18,6 @@ vi.mock('../../../jobs/queues/email.queue.ts', () => ({
 }));
 const addToQueueMock = vi.mocked(emailQueue.add);
 
-// Every request gets its own client IP so the per-IP rate limit doesn't leak between tests.
 function forgotPassword(body: unknown, ip = randomIp()) {
   return request(app)
     .post(ENDPOINT)

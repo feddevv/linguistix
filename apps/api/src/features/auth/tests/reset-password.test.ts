@@ -5,17 +5,10 @@ import { app } from '../../../app.js';
 import { pg } from '../../../lib/pg.js';
 import { redisClient } from '../../../lib/redis.js';
 import { hashString } from '../utils/hashing.js';
-import { VerificationTokenRepo } from '../auth.repository.js';
 import { UserRepo } from '../../user/user.repository.js';
-import {
-  clearThrottling,
-  clearVerificationTokens,
-  existingUser,
-  loginAs,
-  seedUser,
-  randomIp,
-} from './utils/utils.js';
+import { clearThrottling, clearVerificationTokens, loginAs, randomIp } from './utils/utils.js';
 import { expectErrorBody } from './utils/expects.js';
+import { existingUser, seedToken, seedUser } from './utils/seeds.js';
 
 const ENDPOINT = '/api/auth/reset-password';
 const NEW_PASSWORD = 'brand-new-password';
@@ -30,19 +23,6 @@ function resetPassword(body: unknown, ip = randomIp()) {
 
 function validBody(verificationToken: string, newPassword = NEW_PASSWORD) {
   return { verificationToken, newPassword, confirmPassword: newPassword };
-}
-
-async function seedToken(userId: string, subject = 'reset-password') {
-  const token = crypto.randomBytes(32).toString('hex');
-
-  await VerificationTokenRepo.create({
-    tokenHash: hashString(token),
-    userId,
-    subject,
-    ttlSeconds: 15 * 60,
-  });
-
-  return token;
 }
 
 function tokenKey(token: string) {

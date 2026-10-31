@@ -4,9 +4,10 @@ import { app } from '../../../app.js';
 import { pg } from '../../../lib/pg.js';
 import { redisClient } from '../../../lib/redis.js';
 import { UserRepo } from '../../user/user.repository.js';
-import { clearThrottling, existingUser, seedUser, randomIp } from './utils/utils.js';
+import { clearThrottling, randomIp } from './utils/utils.js';
 import { expectErrorBody } from './utils/expects.js';
 import { emailQueue } from '../../../jobs/queues/email.queue.js';
+import { seedUser, existingUser } from './utils/seeds.js';
 
 const ENDPOINT = '/api/auth/resend-verification';
 const GENERIC_MESSAGE =

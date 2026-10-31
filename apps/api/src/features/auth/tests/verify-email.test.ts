@@ -6,10 +6,10 @@ import { app } from '../../../app.js';
 import { pg } from '../../../lib/pg.js';
 import { redisClient } from '../../../lib/redis.js';
 import { hashString } from '../utils/hashing.js';
-import { clearThrottling, clearVerificationTokens, seedUser } from './utils/utils.js';
+import { clearThrottling, clearVerificationTokens } from './utils/utils.js';
 import { expectErrorBody, expectNoAuthCookies } from './utils/expects.js';
 import { UserRepo } from '../../user/user.repository.js';
-import { VerificationTokenRepo } from '../auth.repository.js';
+import { seedToken, seedUser } from './utils/seeds.js';
 
 const ENDPOINT = '/api/auth/verify-email';
 const FRONTEND_URL = 'http://localhost:5173/';
@@ -21,20 +21,6 @@ function verifyEmail(query?: Record<string, string | string[]>) {
 
 function errorRedirect(error: ErrorCode) {
   return `${FRONTEND_URL}?error=${error}`;
-}
-
-// Stores only the hash, like registration does, and returns the raw token the user receives by email.
-async function seedToken(userId: string, ttlSeconds = 15 * 60) {
-  const token = crypto.randomBytes(32).toString('hex');
-
-  await VerificationTokenRepo.create({
-    tokenHash: hashString(token),
-    userId,
-    subject: 'email',
-    ttlSeconds,
-  });
-
-  return token;
 }
 
 function tokenKey(token: string) {
@@ -71,7 +57,7 @@ describe('GET /api/auth/verify-email', () => {
   describe('happy path', () => {
     it('verifies the email and redirects to the frontend', async () => {
       const user = await seedUser();
-      const token = await seedToken(user.id);
+      const token = await seedToken(user.id, 'email');
 
       const res = await verifyEmail({ token }).expect(302);
 
@@ -81,7 +67,7 @@ describe('GET /api/auth/verify-email', () => {
 
     it('consumes the token', async () => {
       const user = await seedUser();
-      const token = await seedToken(user.id);
+      const token = await seedToken(user.id, 'email');
 
       await verifyEmail({ token }).expect(302);
 
@@ -91,7 +77,7 @@ describe('GET /api/auth/verify-email', () => {
     it('verifies only the owner of the token', async () => {
       const owner = await seedUser();
       const other = await seedUser({ email: 'grace.hopper@example.com' });
-      const token = await seedToken(owner.id);
+      const token = await seedToken(owner.id, 'email');
 
       await verifyEmail({ token }).expect(302);
 
@@ -101,7 +87,7 @@ describe('GET /api/auth/verify-email', () => {
 
     it('does not sign the user in', async () => {
       const user = await seedUser();
-      const token = await seedToken(user.id);
+      const token = await seedToken(user.id, 'email');
 
       const res = await verifyEmail({ token }).expect(302);
 
@@ -112,7 +98,7 @@ describe('GET /api/auth/verify-email', () => {
   describe('invalid tokens', () => {
     it('redirects with INVALID_VERIFICATION_TOKEN for an unknown token', async () => {
       const user = await seedUser();
-      await seedToken(user.id);
+      await seedToken(user.id, 'email');
 
       const res = await verifyEmail({ token: crypto.randomBytes(32).toString('hex') }).expect(302);
 
@@ -122,7 +108,7 @@ describe('GET /api/auth/verify-email', () => {
 
     it('rejects an expired token', async () => {
       const user = await seedUser();
-      const token = await seedToken(user.id);
+      const token = await seedToken(user.id, 'email');
       await redisClient.PEXPIRE(tokenKey(token), 1);
       await new Promise((resolve) => setTimeout(resolve, 10));
 
@@ -134,7 +120,7 @@ describe('GET /api/auth/verify-email', () => {
 
     it('rejects a token that has already been used', async () => {
       const user = await seedUser();
-      const token = await seedToken(user.id);
+      const token = await seedToken(user.id, 'email');
       await verifyEmail({ token }).expect(302);
 
       const res = await verifyEmail({ token }).expect(302);
@@ -145,7 +131,7 @@ describe('GET /api/auth/verify-email', () => {
 
     it('rejects the stored hash when it is sent as the token', async () => {
       const user = await seedUser();
-      const token = await seedToken(user.id);
+      const token = await seedToken(user.id, 'email');
 
       const res = await verifyEmail({ token: hashString(token) }).expect(302);
 
@@ -155,7 +141,7 @@ describe('GET /api/auth/verify-email', () => {
 
     it('rejects a token that differs only in letter casing', async () => {
       const user = await seedUser();
-      const token = await seedToken(user.id);
+      const token = await seedToken(user.id, 'email');
 
       const res = await verifyEmail({ token: token.toUpperCase() }).expect(302);
 
@@ -167,7 +153,7 @@ describe('GET /api/auth/verify-email', () => {
   describe('already verified user', () => {
     it('redirects with EMAIL_ALREADY_VERIFIED for a valid token of a verified user', async () => {
       const user = await seedUser();
-      const token = await seedToken(user.id);
+      const token = await seedToken(user.id, 'email');
       await UserRepo.updateIsVerified(true, user.id);
 
       const res = await verifyEmail({ token }).expect(302);
@@ -192,7 +178,7 @@ describe('GET /api/auth/verify-email', () => {
 
     it('does not consume any token on a validation error', async () => {
       const user = await seedUser();
-      const token = await seedToken(user.id);
+      const token = await seedToken(user.id, 'email');
 
       await verifyEmail({ token: '' }).expect(400);
 
@@ -204,7 +190,7 @@ describe('GET /api/auth/verify-email', () => {
   describe('edge cases', () => {
     it('accepts a valid token surrounded by whitespace', async () => {
       const user = await seedUser();
-      const token = await seedToken(user.id);
+      const token = await seedToken(user.id, 'email');
 
       const res = await verifyEmail({ token: `  ${token}  ` }).expect(302);
 
@@ -214,7 +200,7 @@ describe('GET /api/auth/verify-email', () => {
 
     it('lets only one of two concurrent requests with the same token succeed', async () => {
       const user = await seedUser();
-      const token = await seedToken(user.id);
+      const token = await seedToken(user.id, 'email');
 
       const responses = await Promise.all([verifyEmail({ token }), verifyEmail({ token })]);
       const locations = responses.map((res) => res.headers.location).sort();
@@ -226,7 +212,7 @@ describe('GET /api/auth/verify-email', () => {
 
     it('redirects with SERVER_ERROR on an unexpected failure', async () => {
       const user = await seedUser();
-      const token = await seedToken(user.id);
+      const token = await seedToken(user.id, 'email');
       vi.spyOn(console, 'error').mockImplementation(() => {});
       vi.spyOn(UserRepo, 'updateIsVerified').mockRejectedValueOnce(new Error('db is down'));
 
