@@ -13,15 +13,12 @@ import {
   existingUser,
   loginAs,
   seedUser,
+  randomIp,
 } from './utils/utils.js';
 import { expectErrorBody } from './utils/expects.js';
 
 const ENDPOINT = '/api/auth/reset-password';
 const NEW_PASSWORD = 'brand-new-password';
-
-function randomIp() {
-  return `10.${crypto.randomInt(256)}.${crypto.randomInt(256)}.${crypto.randomInt(256)}`;
-}
 
 // Every request gets its own client IP so the per-IP rate limit doesn't leak between tests.
 function resetPassword(body: unknown, ip = randomIp()) {

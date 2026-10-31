@@ -5,6 +5,7 @@ import { type Response } from 'supertest';
 import request from 'supertest';
 import { app } from '../../../../app.js';
 import { redisClient } from '../../../../lib/redis.js';
+import crypto from 'crypto';
 
 export const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -75,4 +76,8 @@ export async function clearThrottling() {
 export async function clearVerificationTokens() {
   const keys = await redisClient.KEYS('verificationToken:*');
   if (keys.length) await redisClient.DEL(keys);
+}
+
+export function randomIp() {
+  return `10.${crypto.randomInt(256)}.${crypto.randomInt(256)}.${crypto.randomInt(256)}`;
 }
