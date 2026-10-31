@@ -6,7 +6,7 @@ import { app } from '../../../app.js';
 import { pg } from '../../../lib/pg.js';
 import { redisClient } from '../../../lib/redis.js';
 import { hashString } from '../utils/hashing.js';
-import { clearThrottling, seedUser } from './utils/utils.js';
+import { clearThrottling, clearVerificationTokens, seedUser } from './utils/utils.js';
 import { expectErrorBody, expectNoAuthCookies } from './utils/expects.js';
 import { UserRepo } from '../../user/user.repository.js';
 import { VerificationTokenRepo } from '../auth.repository.js';
@@ -43,11 +43,6 @@ function tokenKey(token: string) {
 
 async function tokenExists(token: string) {
   return (await redisClient.EXISTS(tokenKey(token))) === 1;
-}
-
-async function clearVerificationTokens() {
-  const keys = await redisClient.KEYS('verificationToken:*');
-  if (keys.length) await redisClient.DEL(keys);
 }
 
 async function isVerified(userId: string) {

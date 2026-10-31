@@ -71,3 +71,8 @@ export async function clearThrottling() {
   const keys = [...(await redisClient.KEYS('cooldown:*')), ...(await redisClient.KEYS('rl:*'))];
   if (keys.length) await redisClient.DEL(keys);
 }
+
+export async function clearVerificationTokens() {
+  const keys = await redisClient.KEYS('verificationToken:*');
+  if (keys.length) await redisClient.DEL(keys);
+}
