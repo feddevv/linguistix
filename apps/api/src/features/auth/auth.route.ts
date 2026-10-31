@@ -40,18 +40,18 @@ function checkCooldown(subject: string) {
 
 router.post(
   '/auth/register',
-  authLimiter,
   validate({ body: registerSchema }),
+  authLimiter,
   authController.register,
 );
-router.post('/auth/login', authLimiter, validate({ body: loginSchema }), authController.login);
+router.post('/auth/login', validate({ body: loginSchema }), authLimiter, authController.login);
 router.post('/auth/refresh', authController.refresh);
 router.post('/auth/logout', authController.logout);
 router.get('/auth/google', authController.google);
 router.get(
   '/auth/google/callback',
-  authLimiter,
   validate({ query: oauthSchema }),
+  authLimiter,
   authController.googleCallback,
 );
 router.get(
@@ -62,23 +62,23 @@ router.get(
 
 router.post(
   '/auth/resend-verification',
+  validate({ body: resendVerificationSchema }),
   checkCooldown('resend-email-verification'),
   strictLimiter,
-  validate({ body: resendVerificationSchema }),
   authController.resendVerification,
 );
 
 router.post(
   '/auth/forgot-password',
+  validate({ body: forgotPasswordSchema }),
   checkCooldown('reset-password'),
   strictLimiter,
-  validate({ body: forgotPasswordSchema }),
   authController.forgotPassword,
 );
 
 router.post(
   '/auth/reset-password',
-  strictLimiter,
   validate({ body: resetPasswordSchema }),
+  strictLimiter,
   authController.resetPassword,
 );
