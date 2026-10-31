@@ -175,7 +175,7 @@ export async function resendVerification(
   await authService.resendVerification(req.body.email);
 
   res.json({
-    message: "If an account with this email exists and isn't verified yet, we've sent a new list.",
+    message: "If an account with this email exists and isn't verified yet, we've sent a new verification link.",
   });
 }
 
@@ -186,7 +186,7 @@ export async function forgotPassword(
   await authService.forgotPassword(req.body.email);
 
   res.json({
-    message: "If an account with this email exists and is verified, we've sent a new list.",
+    message: "If an account with this email exists and is verified, we've sent a new password reset link.",
   });
 }
 

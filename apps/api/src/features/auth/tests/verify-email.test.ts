@@ -4,12 +4,12 @@ import crypto from 'crypto';
 import type { ErrorCode } from '@repo/shared';
 import { app } from '../../../app.js';
 import { pg } from '../../../lib/pg.js';
+import { redisClient } from '../../../lib/redis.js';
 import { hashString } from '../utils/hashing.js';
 import { clearThrottling, seedUser } from './utils/utils.js';
-import { daysFromNow } from '../utils/index.js';
 import { expectErrorBody, expectNoAuthCookies } from './utils/expects.js';
 import { UserRepo } from '../../user/user.repository.js';
-import { EmailVerificationTokenRepo } from '../auth.repository.js';
+import { VerificationTokenRepo } from '../auth.repository.js';
 
 const ENDPOINT = '/api/auth/verify-email';
 const FRONTEND_URL = 'http://localhost:5173/';
@@ -24,25 +24,30 @@ function errorRedirect(error: ErrorCode) {
 }
 
 // Stores only the hash, like registration does, and returns the raw token the user receives by email.
-async function seedToken(userId: string, expiresAt = daysFromNow(1)) {
+async function seedToken(userId: string, ttlSeconds = 15 * 60) {
   const token = crypto.randomBytes(32).toString('hex');
 
-  await EmailVerificationTokenRepo.createToken({
+  await VerificationTokenRepo.create({
     tokenHash: hashString(token),
     userId,
-    expiresAt,
+    subject: 'email',
+    ttlSeconds,
   });
 
   return token;
 }
 
-async function findTokenRow(token: string) {
-  const { rows } = await pg.query<{ used_at: Date | null }>(
-    `SELECT used_at FROM email_verification_tokens WHERE token_hash = $1`,
-    [hashString(token)],
-  );
+function tokenKey(token: string) {
+  return `verificationToken:${hashString(token)}:email`;
+}
 
-  return rows[0];
+async function tokenExists(token: string) {
+  return (await redisClient.EXISTS(tokenKey(token))) === 1;
+}
+
+async function clearVerificationTokens() {
+  const keys = await redisClient.KEYS('verificationToken:*');
+  if (keys.length) await redisClient.DEL(keys);
 }
 
 async function isVerified(userId: string) {
@@ -52,6 +57,7 @@ async function isVerified(userId: string) {
 beforeEach(async () => {
   vi.stubEnv('FRONTEND_URL', FRONTEND_URL);
   await clearThrottling();
+  await clearVerificationTokens();
   await pg.query('TRUNCATE TABLE users CASCADE;');
 });
 
@@ -60,8 +66,10 @@ afterEach(() => {
 });
 
 afterAll(async () => {
+  await clearVerificationTokens();
   await pg.query('TRUNCATE TABLE users CASCADE;');
   await pg.end();
+  await redisClient.quit();
 });
 
 describe('GET /api/auth/verify-email', () => {
@@ -76,13 +84,13 @@ describe('GET /api/auth/verify-email', () => {
       expect(await isVerified(user.id)).toBe(true);
     });
 
-    it('marks the token as used', async () => {
+    it('consumes the token', async () => {
       const user = await seedUser();
       const token = await seedToken(user.id);
 
       await verifyEmail({ token }).expect(302);
 
-      expect((await findTokenRow(token))!.used_at).toBeInstanceOf(Date);
+      expect(await tokenExists(token)).toBe(false);
     });
 
     it('verifies only the owner of the token', async () => {
@@ -117,15 +125,16 @@ describe('GET /api/auth/verify-email', () => {
       expect(await isVerified(user.id)).toBe(false);
     });
 
-    it('rejects an expired token and leaves it unconsumed', async () => {
+    it('rejects an expired token', async () => {
       const user = await seedUser();
-      const token = await seedToken(user.id, daysFromNow(-1));
+      const token = await seedToken(user.id);
+      await redisClient.PEXPIRE(tokenKey(token), 1);
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       const res = await verifyEmail({ token }).expect(302);
 
       expect(res.headers.location).toBe(errorRedirect('INVALID_VERIFICATION_TOKEN'));
       expect(await isVerified(user.id)).toBe(false);
-      expect((await findTokenRow(token))!.used_at).toBeNull();
     });
 
     it('rejects a token that has already been used', async () => {
@@ -192,7 +201,7 @@ describe('GET /api/auth/verify-email', () => {
 
       await verifyEmail({ token: '' }).expect(400);
 
-      expect((await findTokenRow(token))!.used_at).toBeNull();
+      expect(await tokenExists(token)).toBe(true);
       expect(await isVerified(user.id)).toBe(false);
     });
   });
@@ -220,7 +229,7 @@ describe('GET /api/auth/verify-email', () => {
       expect(await isVerified(user.id)).toBe(true);
     });
 
-    it('redirects with SERVER_ERROR and leaves the token unused on an unexpected failure', async () => {
+    it('redirects with SERVER_ERROR on an unexpected failure', async () => {
       const user = await seedUser();
       const token = await seedToken(user.id);
       vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -230,7 +239,6 @@ describe('GET /api/auth/verify-email', () => {
 
       expect(res.headers.location).toBe(errorRedirect('SERVER_ERROR'));
       expect(await isVerified(user.id)).toBe(false);
-      expect((await findTokenRow(token))!.used_at).toBeNull();
     });
   });
 });
