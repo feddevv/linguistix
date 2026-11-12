@@ -19,10 +19,11 @@ info:
     | `INVALID_CREDENTIALS` | 401    | Wrong email or password                                    |
     | `TOKEN_NOT_FOUND`     | 401    | Refresh token cookie is missing                            |
     | `INVALID_TOKEN`       | 401    | Refresh token is invalid, expired or already used          |
-    | `USER_NOT_FOUND`      | 404    | The user of the session no longer exists                   |
+    | `INVALID_VERIFICATION_TOKEN` | 400 | Password reset token is invalid, expired or already used |
+    | `USER_NOT_FOUND`      | 404    | The user of the session or reset token no longer exists    |
     | `EMAIL_IN_USE`        | 409    | A user with this email already exists                      |
     | `REQUEST_LIMIT`       | 429    | The client IP exceeded a rate limit                        |
-    | `COOLDOWN`            | 429    | The same email was used less than 60 seconds ago           |
+    | `COOLDOWN`            | 429    | The same email was sent to this endpoint less than 60 seconds ago |
     | `SERVER_ERROR`        | 500    | Unexpected server error                                    |
 
     Validation errors report **only the first** failing rule. Fields are checked
@@ -46,23 +47,38 @@ info:
 
     - **Global limit:** 100 requests per minute, shared by every route
       (including unknown routes and, in development, `/api/docs`).
-    - **Auth limit:** 3 requests per 5 minutes, applied to
-      `POST /api/auth/login` and `POST /api/auth/resend-verification`. Each
-      endpoint has its **own** counter per IP.
-    - **Per-email cooldown:** see `POST /api/auth/resend-verification`.
+    - **Auth limit:** 10 requests per 15 minutes, applied to
+      `POST /api/auth/register`, `POST /api/auth/login` and
+      `GET /api/auth/google/callback`.
+    - **Strict limit:** 3 requests per 10 minutes, applied to
+      `POST /api/auth/resend-verification`, `POST /api/auth/forgot-password`
+      and `POST /api/auth/reset-password`.
+    - The auth and strict limits keep a **separate counter per endpoint**
+      and IP, so requests to one endpoint do not use up the quota of another.
+    - **Per-email cooldown:** see `POST /api/auth/resend-verification` and
+      `POST /api/auth/forgot-password`.
 
     Requests rejected by `express.json()` (malformed JSON, body over 100 KB)
     fail before the limiters and are not counted.
 
     Every counted response carries the `RateLimit` and `RateLimit-Policy`
     headers (IETF draft 08), one entry per limiter that applies, for example
-    `"100-in-1min"` and `"3-in-5min"`. A request over an IP limit gets `429`
-    with `errorCode: REQUEST_LIMIT` and a `Retry-After` header.
+    `"100-in-1min"`, `"10-in-15min"` and `"3-in-10min"`. A request over an IP
+    limit gets `429` with `errorCode: REQUEST_LIMIT` and a `Retry-After`
+    header.
+
+    ## One-time tokens
+    Email verification and password reset links carry a random token
+    (32 bytes, 64 lower-case hex characters). Only its SHA-256 hash is stored,
+    in Redis, with a lifetime of **15 minutes**. Each token can be used only
+    once, and only the latest token of a user for each purpose is valid:
+    issuing a new one invalidates the previous one. Verification and reset
+    tokens are separate; one cannot be used in place of the other.
 
     ## Email verification
     Users who register with email and password start **unverified**.
     `POST /api/auth/register` emails them a link to
-    `GET /api/auth/verify-email?token=<token>` that is valid for 24 hours.
+    `GET /api/auth/verify-email?token=<token>` that is valid for 15 minutes.
     `POST /api/auth/resend-verification` sends a new link and invalidates the
     previous one. Users who sign up with Google are verified from the start.
 
@@ -73,6 +89,14 @@ info:
 
     Unverified users can currently log in and use the session like verified
     users; verification is not enforced yet.
+
+    ## Password reset
+    1. `POST /api/auth/forgot-password` emails a verified user a link to
+       `{FRONTEND_URL}?token=<token>`, valid for 15 minutes.
+    2. The frontend reads `token` from its URL and sends it, with the new
+       password, to `POST /api/auth/reset-password`.
+    3. The password is replaced and **every** session of the user is ended.
+       The user has to log in again with the new password.
 
     ## Authentication
     `POST /api/auth/login` and a successful Google sign-in set two `HttpOnly`
@@ -92,6 +116,8 @@ info:
       once.
     - `POST /api/auth/logout` ends the current session: its stored refresh token
       is deleted and both cookies are cleared. Other sessions stay valid.
+    - `POST /api/auth/reset-password` ends **all** sessions of the user. Access
+      tokens that were already issued stay valid until they expire.
 
 servers:
   - url: http://localhost:3000
@@ -102,6 +128,8 @@ tags:
     description: Registration and authentication with email and password
   - name: Email verification
     description: Confirming the email address of a registered user
+  - name: Password reset
+    description: Setting a new password through an emailed link
   - name: Google OAuth
     description: Sign-in with a Google account
 
@@ -128,19 +156,22 @@ paths:
         - The password is hashed with SHA-256 and then with bcrypt, so passwords
           longer than 72 bytes are not truncated. It is never returned.
         - Unknown properties (for example `id`) are silently ignored.
-        - The user is created **unverified**. A random verification token
-          (32 bytes, 64 hex characters) valid for 24 hours is generated; only its
-          SHA-256 hash is stored. An email with the link
-          `{BACKEND_URL}/api/auth/verify-email?token=<token>` is sent to the user
-          (see `GET /api/auth/verify-email`).
-        - The user and the token are saved in one transaction, and only then is
-          the email queued. If queueing fails (for example, Redis is
-          unavailable), the response is `500`, but the user **is** created: a
-          new attempt to register gets `409`. Use
-          `POST /api/auth/resend-verification` to get a new link. Failures to
-          deliver the queued email are not reported.
+        - The user is created **unverified**. A verification token valid for
+          15 minutes is generated (see *One-time tokens*) and an email with the
+          link `{BACKEND_URL}/api/auth/verify-email?token=<token>` is sent to
+          the user (see `GET /api/auth/verify-email`).
+        - The user is saved first, then the token is stored in Redis, then the
+          email is queued. These steps are **not** atomic: if storing the token
+          or queueing the email fails (for example, Redis is unavailable), the
+          response is `500`, but the user **is** created and a new attempt to
+          register gets `409`. Use `POST /api/auth/resend-verification` to get
+          a new link. Failures to deliver the queued email are not reported.
         - The user is **not** logged in; no cookies are set. Call `POST /api/auth/login`
           afterwards.
+        - **Throttling:** besides the global limit, register is subject to the
+          auth limit of 10 requests per 15 minutes per client IP, with its own
+          counter. It is checked **before** validation, so every attempt
+          counts.
       requestBody:
         $ref: '#/components/requestBodies/RegisterRequest'
       responses:
@@ -182,10 +213,9 @@ paths:
           valid.
         - Unknown properties are silently ignored.
         - **Throttling:** besides the global limit, login is subject to the auth
-          limit of 3 requests per 5 minutes per client IP. The counter is
-          separate from `POST /api/auth/resend-verification`. It is checked **before**
-          validation, so every attempt counts, whether it succeeds, fails
-          validation or has wrong credentials.
+          limit of 10 requests per 15 minutes per client IP, with its own
+          counter. It is checked **before** validation, so every attempt counts,
+          whether it succeeds, fails validation or has wrong credentials.
       requestBody:
         $ref: '#/components/requestBodies/LoginRequest'
       responses:
@@ -338,8 +368,12 @@ paths:
       description: |
         Redirect target that Google calls after the consent screen. It is not
         meant to be called directly. Except for a malformed query (see `400`)
-        or the global rate limit (see `429`), it always answers with a `302`
-        redirect to the frontend (`FRONTEND_URL`).
+        or a rate limit (see `429`), it always answers with a `302` redirect
+        to the frontend (`FRONTEND_URL`).
+
+        Besides the global limit, it is subject to the auth limit of 10
+        requests per 15 minutes per client IP, with its own counter. A
+        throttled request gets a JSON `429` instead of a redirect.
 
         Steps, in order:
 
@@ -464,25 +498,29 @@ paths:
 
         1. `token` is trimmed. A missing, empty or whitespace-only token, or a
            token passed more than once, gets a JSON `400`.
-        2. The SHA-256 hash of the token is looked up. The token must exist, be
-           unused and not expired (tokens live 24 hours). Otherwise the browser
-           is redirected with `error=INVALID_VERIFICATION_TOKEN`. The token is
-           case-sensitive.
+        2. The token is looked up by its SHA-256 hash and **consumed** in the
+           same step. It must exist, be unused and not expired (tokens live
+           15 minutes). Otherwise the browser is redirected with
+           `error=INVALID_VERIFICATION_TOKEN`. The token is case-sensitive. A
+           password reset token is not accepted.
         3. If the user of the token does not exist, the browser is redirected
            with `error=USER_NOT_FOUND`.
         4. If the user is already verified, the browser is redirected with
-           `error=EMAIL_ALREADY_VERIFIED` and the token stays unused.
-        5. The token is marked as used and the user as verified in one
-           transaction, and the browser is redirected to `FRONTEND_URL` without
-           an `error` parameter.
+           `error=EMAIL_ALREADY_VERIFIED`.
+        5. The user is marked as verified, and the browser is redirected to
+           `FRONTEND_URL` without an `error` parameter.
 
-        - Each token can be used only once. If the same token is sent in two
-          concurrent requests, only one of them succeeds; the other gets
+        - Each token can be used only once. Because it is consumed in step 2,
+          it can no longer be used after any of the steps 3–5, even if that
+          step fails. If the same token is sent in two concurrent requests,
+          only one of them gets past step 2; the other gets
           `error=INVALID_VERIFICATION_TOKEN`.
         - Only the latest token of a user is valid:
           `POST /api/auth/resend-verification` replaces the previous one.
-        - Any unexpected error (for example, the database is unavailable)
-          redirects with `error=SERVER_ERROR` and leaves the token unused.
+        - Any unexpected error (for example, the database or Redis is
+          unavailable) redirects with `error=SERVER_ERROR`. If it happens after
+          step 2, the token is already used up; request a new one with
+          `POST /api/auth/resend-verification`.
         - The user is **not** signed in; no session cookies are set.
       parameters:
         - name: token
@@ -542,37 +580,161 @@ paths:
           it does not reveal whether an account exists. An email is sent only
           when a user with this email exists and is not verified yet (accounts
           created through Google sign-in are always verified).
-        - When an email is sent, the email is queued first and then a new token
-          valid for 24 hours replaces the previous one, so links sent earlier
-          stop working. The link points to `GET /api/auth/verify-email`. If
-          queueing fails, the response is `500` and the previous link stays
-          valid.
+        - When an email is sent, a new token valid for 15 minutes first
+          replaces the previous one, so links sent earlier stop working, and
+          then the email is queued. The link points to
+          `GET /api/auth/verify-email`. If queueing fails, the response is
+          `500` and the previous link no longer works; request a new one after
+          the cooldown.
         - Unknown properties are silently ignored.
 
         **Throttling.** Checks run in this order:
 
         1. **Global limit:** 100 requests per minute per client IP (see
-           *Rate limiting* above). Checked before validation.
-        2. Validation.
-        3. **Per-email cooldown:** one request per (lower-cased) email address
-           every 60 seconds, whether or not the account exists. A repeated
-           request gets `429` with `errorCode: COOLDOWN` and `retryAfter`
-           (seconds left) in the body. These requests do not count towards the
-           auth limit. The cooldown starts even if the request later fails.
-        4. **Auth limit:** 3 requests per 5 minutes per client IP, counted
-           separately from `POST /api/auth/login`. Requests over the limit get `429` with
+           *Rate limiting* above).
+        2. **Per-email cooldown:** one request per `email` value every 60
+           seconds, whether or not the account exists. A repeated request gets
+           `429` with `errorCode: COOLDOWN` and `retryAfter` (seconds left) in
+           the body; it does not count towards the strict limit. The cooldown
+           is separate from `POST /api/auth/forgot-password`. See
+           *Per-email cooldown* in `EmailCooldownTooManyRequests` for details.
+        3. **Strict limit:** 3 requests per 10 minutes per client IP, with its
+           own counter. Requests over the limit get `429` with
            `errorCode: REQUEST_LIMIT` and a `Retry-After` header.
+        4. Validation. Invalid requests have already started the cooldown and
+           counted towards the strict limit.
       requestBody:
         $ref: '#/components/requestBodies/ResendVerificationRequest'
       responses:
         '200':
           $ref: '#/components/responses/ResendVerificationSuccess'
         '400':
-          $ref: '#/components/responses/ResendVerificationBadRequest'
+          $ref: '#/components/responses/EmailBadRequest'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
         '429':
-          $ref: '#/components/responses/ResendVerificationTooManyRequests'
+          $ref: '#/components/responses/EmailCooldownTooManyRequests'
+        '500':
+          $ref: '#/components/responses/EmailCooldownInternalServerError'
+
+  /api/auth/forgot-password:
+    post:
+      tags: [Password reset]
+      operationId: forgotPassword
+      security: []
+      summary: Request a password reset link
+      description: |
+        Emails a password reset link to a verified user.
+
+        - `email` is validated with the same rules as in
+          `POST /api/auth/register` and lower-cased, so the lookup is
+          case-insensitive.
+        - The response is **always** the same `200` with a generic message, so
+          it does not reveal whether an account exists. An email is sent only
+          when a user with this email exists and **is verified**. Unverified
+          users get no email; they should verify first.
+        - Accounts created through Google sign-in are verified and have no
+          password. They also get a reset link, and resetting sets a password
+          for them, so they can log in with `POST /api/auth/login` afterwards.
+        - When an email is sent, a new reset token valid for 15 minutes first
+          replaces the previous one, so reset links sent earlier stop working,
+          and then the email is queued. The email verification token is not
+          affected. If queueing fails, the response is `500` and the previous
+          link no longer works.
+        - The link is `{FRONTEND_URL}?token=<token>`. The frontend must pass
+          `token` to `POST /api/auth/reset-password` as `verificationToken`.
+        - Nothing else changes: the password and the sessions stay as they are
+          until the reset is completed.
+        - Unknown properties are silently ignored.
+
+        **Throttling.** Checks run in this order:
+
+        1. **Global limit:** 100 requests per minute per client IP.
+        2. **Per-email cooldown:** one request per `email` value every 60
+           seconds, separate from the cooldown of
+           `POST /api/auth/resend-verification`. A repeated request gets `429`
+           with `errorCode: COOLDOWN` and `retryAfter` in the body; it does
+           not count towards the strict limit.
+        3. **Strict limit:** 3 requests per 10 minutes per client IP, with its
+           own counter.
+        4. Validation. Invalid requests have already started the cooldown and
+           counted towards the strict limit.
+      requestBody:
+        $ref: '#/components/requestBodies/ForgotPasswordRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/ForgotPasswordSuccess'
+        '400':
+          $ref: '#/components/responses/EmailBadRequest'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/EmailCooldownTooManyRequests'
+        '500':
+          $ref: '#/components/responses/EmailCooldownInternalServerError'
+
+  /api/auth/reset-password:
+    post:
+      tags: [Password reset]
+      operationId: resetPassword
+      security: []
+      summary: Reset the password
+      description: |
+        Sets a new password using the token from the link sent by
+        `POST /api/auth/forgot-password`.
+
+        - Fields are validated in the order `verificationToken` →
+          `newPassword` → `confirmPassword`; only the first error is returned.
+          The `Passwords don't match` error is returned only when every other
+          rule passes. `newPassword` and `confirmPassword` follow the rules of
+          `password` and `confirmPassword` in `POST /api/auth/register`
+          (including trimming), and the error messages are the same.
+        - `verificationToken` is trimmed. It is case-sensitive. An email
+          verification token is not accepted.
+        - A request that fails validation does **not** use up the token.
+
+        Steps, in order:
+
+        1. The token is looked up by its SHA-256 hash and **consumed** in the
+           same step. It must exist, be unused, not expired (tokens live
+           15 minutes) and be the latest reset token of its user. Otherwise
+           the response is `400` with `errorCode: INVALID_VERIFICATION_TOKEN`.
+        2. The new password is hashed like in `POST /api/auth/register`.
+        3. In one transaction, the password of the user is replaced and
+           **all** sessions of the user are ended (their refresh tokens are
+           deleted). If the user no longer exists, the response is `404` with
+           `errorCode: USER_NOT_FOUND`.
+
+        - Each token can be used only once. Because it is consumed in step 1,
+          it cannot be used again after a `404` or `500` either; request a new
+          link with `POST /api/auth/forgot-password`. On `404` or `500` the
+          password and the sessions are not changed.
+        - If the same token is sent in two concurrent requests, only one of
+          them succeeds; the other gets `400`.
+        - The new password may be the same as the old one.
+        - The user is **not** signed in and no cookies are set or cleared.
+          Access tokens issued before the reset stay valid until they expire
+          (at most 15 minutes), but `POST /api/auth/refresh` fails for every
+          old session.
+        - The email verification status is not changed.
+        - Unknown properties are silently ignored.
+        - **Throttling:** besides the global limit, this endpoint is subject to
+          the strict limit of 3 requests per 10 minutes per client IP, with its
+          own counter. It is checked **before** validation, so every attempt
+          counts. There is no per-email cooldown.
+      requestBody:
+        $ref: '#/components/requestBodies/ResetPasswordRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/ResetPasswordSuccess'
+        '400':
+          $ref: '#/components/responses/ResetPasswordBadRequest'
+        '404':
+          $ref: '#/components/responses/ResetPasswordUserNotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -763,6 +925,66 @@ components:
             - If an account with this email exists and isn't verified yet, we've sent a new verification link.
           example: If an account with this email exists and isn't verified yet, we've sent a new verification link.
 
+    ForgotPasswordInput:
+      type: object
+      description: Email address to send a password reset link to.
+      required: [email]
+      properties:
+        email:
+          $ref: '#/components/schemas/Email'
+
+    ForgotPasswordResponse:
+      type: object
+      description: |
+        Generic confirmation. It is the same whether or not an email was sent.
+      required: [message]
+      additionalProperties: false
+      properties:
+        message:
+          type: string
+          enum:
+            - If an account with this email exists and is verified, we've sent a new password reset link.
+          example: If an account with this email exists and is verified, we've sent a new password reset link.
+
+    PasswordResetToken:
+      type: string
+      description: |
+        Token from the password reset link (the `token` query parameter of
+        `{FRONTEND_URL}?token=<token>`): 64 lower-case hex characters.
+        Leading and trailing whitespace is trimmed before validation; the
+        trimmed value must not be empty.
+      minLength: 1
+      writeOnly: true
+      example: 3c1f9a7e5b2d4c6a8e0f1b3d5a7c9e2f4b6d8a0c2e4f6b8d0a2c4e6f8b0d2a4c
+
+    ResetPasswordInput:
+      type: object
+      description: Reset token and the new password.
+      required: [verificationToken, newPassword, confirmPassword]
+      properties:
+        verificationToken:
+          $ref: '#/components/schemas/PasswordResetToken'
+        newPassword:
+          $ref: '#/components/schemas/Password'
+        confirmPassword:
+          allOf:
+            - $ref: '#/components/schemas/ConfirmPassword'
+          description: |
+            Repeats `newPassword`. Leading and trailing whitespace is trimmed
+            before validation; the trimmed value must be 6–255 characters long
+            and equal to the trimmed `newPassword`.
+
+    ResetPasswordResponse:
+      type: object
+      description: Confirms that the password was replaced.
+      required: [message]
+      additionalProperties: false
+      properties:
+        message:
+          type: string
+          enum: [Password has been reset]
+          example: Password has been reset
+
     TooManyRequests:
       type: object
       description: |
@@ -775,7 +997,8 @@ components:
           type: string
           description: |
             `REQUEST_LIMIT` for a per-IP rate limit, `COOLDOWN` for the
-            per-email cooldown of `POST /api/auth/resend-verification`.
+            per-email cooldown of `POST /api/auth/resend-verification` and
+            `POST /api/auth/forgot-password`.
           enum: [REQUEST_LIMIT, COOLDOWN]
           example: REQUEST_LIMIT
         message:
@@ -802,9 +1025,11 @@ components:
       description: |
         Machine-readable error code. Every value of the shared `ErrorCode` type is
         listed; `ACCOUNT_IN_USE` is reserved and not returned yet.
-        `INVALID_VERIFICATION_TOKEN` and `EMAIL_ALREADY_VERIFIED` appear only as
-        redirect `error` values of `GET /api/auth/verify-email`, never in a JSON
-        body.
+        `EMAIL_ALREADY_VERIFIED` appears only as a redirect `error` value of
+        `GET /api/auth/verify-email`, never in a JSON body.
+        `INVALID_VERIFICATION_TOKEN` is a redirect `error` value of
+        `GET /api/auth/verify-email` and a JSON `errorCode` of
+        `POST /api/auth/reset-password`.
       enum:
         - SERVER_ERROR
         - EMAIL_IN_USE
@@ -927,17 +1152,38 @@ components:
           example:
             email: ada.lovelace@example.com
 
+    ForgotPasswordRequest:
+      required: true
+      description: Must be a JSON object, at most 100 KB.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ForgotPasswordInput'
+          example:
+            email: ada.lovelace@example.com
+
+    ResetPasswordRequest:
+      required: true
+      description: Must be a JSON object, at most 100 KB.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ResetPasswordInput'
+          example:
+            verificationToken: 3c1f9a7e5b2d4c6a8e0f1b3d5a7c9e2f4b6d8a0c2e4f6b8d0a2c4e6f8b0d2a4c
+            newPassword: tr0ub4dor-and-3
+            confirmPassword: tr0ub4dor-and-3
+
   headers:
     RateLimit:
       description: |
         Remaining quota of each per-IP limit that applies (IETF draft 08),
         comma-separated: `r` is the number of requests left, `t` the seconds
-        until the window resets. The global limit is `"100-in-1min"`; the auth
-        limit of `POST /api/auth/login` and
-        `POST /api/auth/resend-verification` is `"3-in-5min"`.
+        until the window resets. The global limit is `"100-in-1min"`, the auth
+        limit `"10-in-15min"` and the strict limit `"3-in-10min"`.
       schema:
         type: string
-      example: '"100-in-1min"; r=99; t=60, "3-in-5min"; r=2; t=300'
+      example: '"100-in-1min"; r=99; t=60, "3-in-10min"; r=2; t=600'
     RateLimitPolicy:
       description: |
         Policy of each per-IP limit that applies (IETF draft 08),
@@ -945,7 +1191,7 @@ components:
         derived from the client IP.
       schema:
         type: string
-      example: '"100-in-1min"; q=100; w=60; pk=:ZTNiMGM0NDI5OGZj:, "3-in-5min"; q=3; w=300; pk=:ZTNiMGM0NDI5OGZj:'
+      example: '"100-in-1min"; q=100; w=60; pk=:ZTNiMGM0NDI5OGZj:, "3-in-10min"; q=3; w=600; pk=:N2E1ZDE0YzNmMGJh:'
     RetryAfter:
       description: |
         Seconds until the exceeded per-IP window resets. Sent only with
@@ -1303,22 +1549,153 @@ components:
           example:
             message: If an account with this email exists and isn't verified yet, we've sent a new verification link.
 
-    ResendVerificationBadRequest:
+    ForgotPasswordSuccess:
       description: |
-        The request body is missing, is not valid JSON, is not a JSON object, or
-        fails validation. The `errorCode` is always `VALIDATION_ERROR`. Rejected
-        requests do not start the per-email cooldown and do not count towards
-        the auth limit (they do count towards the global limit).
+        Request accepted. A password reset email was sent only if a verified
+        user with this email exists.
+      headers:
+        RateLimit:
+          $ref: '#/components/headers/RateLimit'
+        RateLimit-Policy:
+          $ref: '#/components/headers/RateLimitPolicy'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ForgotPasswordResponse'
+          example:
+            message: If an account with this email exists and is verified, we've sent a new password reset link.
+
+    ResetPasswordSuccess:
+      description: |
+        Password replaced and all sessions of the user ended. No cookies are
+        set or cleared.
+      headers:
+        RateLimit:
+          $ref: '#/components/headers/RateLimit'
+        RateLimit-Policy:
+          $ref: '#/components/headers/RateLimitPolicy'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ResetPasswordResponse'
+          example:
+            message: Password has been reset
+
+    ResetPasswordBadRequest:
+      description: |
+        The request body is missing, is not valid JSON, is not a JSON object,
+        fails validation (`VALIDATION_ERROR`), or the token cannot be used
+        (`INVALID_VERIFICATION_TOKEN`). Only the first validation error is
+        returned. On a validation error the token is not used up. The password
+        is not changed in any case.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
           examples:
+            invalidToken:
+              summary: |
+                The token is unknown, already used, expired, replaced by a newer
+                reset token, or is an email verification token
+              value:
+                errorCode: INVALID_VERIFICATION_TOKEN
+                message: Invalid or expired verification token
             missingBody:
               summary: Body is missing or not JSON (for example, wrong Content-Type)
               value:
                 errorCode: VALIDATION_ERROR
                 message: 'Invalid input: expected object, received undefined'
+            malformedJson:
+              summary: Malformed JSON, or a top-level JSON primitive (for example `"abc"`)
+              value:
+                errorCode: VALIDATION_ERROR
+                message: Invalid JSON payload passed
+            tokenMissing:
+              summary: verificationToken is missing
+              value:
+                errorCode: VALIDATION_ERROR
+                message: 'Invalid input: expected string, received undefined'
+            tokenNotString:
+              summary: verificationToken is not a string
+              value:
+                errorCode: VALIDATION_ERROR
+                message: 'Invalid input: expected string, received number'
+            tokenEmpty:
+              summary: verificationToken is empty or whitespace only
+              value:
+                errorCode: VALIDATION_ERROR
+                message: Token is empty
+            passwordRequired:
+              summary: newPassword is missing, null, another falsy value (for example `0`), or empty after trimming
+              value:
+                errorCode: VALIDATION_ERROR
+                message: Password is required
+            passwordNotString:
+              summary: newPassword is not a string
+              value:
+                errorCode: VALIDATION_ERROR
+                message: Password should be a string
+            passwordTooShort:
+              summary: newPassword is shorter than 6 characters after trimming
+              value:
+                errorCode: VALIDATION_ERROR
+                message: Password should be at least 6 characters long
+            passwordTooLong:
+              summary: newPassword is longer than 255 characters after trimming
+              value:
+                errorCode: VALIDATION_ERROR
+                message: Password should not exceed 255 characters
+            confirmPasswordRequired:
+              summary: confirmPassword is missing, null or another falsy value (for example `0`)
+              value:
+                errorCode: VALIDATION_ERROR
+                message: Password confirmation is required
+            confirmPasswordNotString:
+              summary: confirmPassword is not a string
+              value:
+                errorCode: VALIDATION_ERROR
+                message: Password confirmation should be a string
+            confirmPasswordTooShort:
+              summary: confirmPassword is shorter than 6 characters after trimming
+              value:
+                errorCode: VALIDATION_ERROR
+                message: Password confirmation should be at least 6 characters long
+            confirmPasswordTooLong:
+              summary: confirmPassword is longer than 255 characters after trimming
+              value:
+                errorCode: VALIDATION_ERROR
+                message: Password confirmation should not exceed 255 characters
+            passwordsDontMatch:
+              summary: confirmPassword differs from newPassword after trimming (checked last)
+              value:
+                errorCode: VALIDATION_ERROR
+                message: Passwords don't match
+
+    ResetPasswordUserNotFound:
+      description: |
+        The token was valid but its user no longer exists. The token is used
+        up.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            errorCode: USER_NOT_FOUND
+            message: This user doesn't exist
+
+    EmailBadRequest:
+      description: |
+        The body is not valid JSON or fails validation. The `errorCode` is
+        always `VALIDATION_ERROR`. Validation runs **after** the per-email
+        cooldown and the strict limit, so a rejected request has already
+        started the cooldown for its `email` value and counted towards the
+        strict limit. A request with no body at all gets `500` (see
+        `EmailCooldownInternalServerError`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
             malformedJson:
               summary: Malformed JSON, or a top-level JSON primitive (for example `"abc"`)
               value:
@@ -1340,10 +1717,21 @@ components:
                 errorCode: VALIDATION_ERROR
                 message: Email should not exceed 255 characters
 
-    ResendVerificationTooManyRequests:
+    EmailCooldownTooManyRequests:
       description: |
         The request is throttled by the global limit, the per-email cooldown or
-        the auth limit. No email is sent.
+        the strict limit. No email is sent.
+
+        **Per-email cooldown.** The cooldown key is the `email` value exactly
+        as sent, before validation and lower-casing:
+
+        - `Ada@Example.com` and `ada@example.com` have separate cooldowns.
+        - Bodies without a string `email` (for example `{}`, `[]` or
+          `{"email": null}`) share one cooldown across **all** clients: after
+          the first such request, the next ones within 60 seconds get
+          `COOLDOWN` instead of a `400`.
+        - The cooldowns of `POST /api/auth/resend-verification` and
+          `POST /api/auth/forgot-password` are independent.
       headers:
         Retry-After:
           $ref: '#/components/headers/RetryAfter'
@@ -1363,10 +1751,25 @@ components:
                 message: Too many requests. Please try again later.
                 retryAfter: 42
             ipLimit:
-              summary: The client IP exceeded the global or the auth limit
+              summary: The client IP exceeded the global or the strict limit
               value:
                 errorCode: REQUEST_LIMIT
                 message: Too many requests
+
+    EmailCooldownInternalServerError:
+      description: |
+        Unexpected server error, as in `InternalServerError`. It is also
+        returned when the request has **no body** or its `Content-Type` is not
+        JSON, because the per-email cooldown reads `email` before the body is
+        validated. When the error happens after the new token was
+        stored, the previous link no longer works.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            errorCode: SERVER_ERROR
+            message: Internal server error!
 
     TooManyRequests:
       description: |
