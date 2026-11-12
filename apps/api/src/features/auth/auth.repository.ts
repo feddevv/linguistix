@@ -1,61 +1,49 @@
-import type { PoolClient } from 'pg';
-import { pg } from '../../lib/pg.js';
-import { toRefreshTokenDomain, toRefreshTokenDomainList } from '../../utils/mappers.js';
-import type { RefreshTokenInputDto, RefreshTokenRow } from './auth.types.js';
+import type { RefreshTokenInputDto } from './auth.types.js';
 import { redisClient } from '../../lib/redis.js';
 
+const refreshTokenKey = (hash: string) => `refreshToken:${hash}`;
+const userRefreshTokensKey = (userId: string) => `refreshToken:user:${userId}`;
+
 class RefreshToken {
-  async findRefreshTokenByHash(refreshTokenHash: string) {
-    const refreshToken = await pg.query<RefreshTokenRow>(
-      `SELECT * FROM refresh_tokens WHERE refresh_token_hash = $1 AND expires_at > NOW()`,
-      [refreshTokenHash],
-    );
+  async create({ refreshTokenHash, userId, expiresAt }: RefreshTokenInputDto) {
+    const userKey = userRefreshTokensKey(userId);
+    const expiresAtSeconds = Math.ceil(expiresAt.getTime() / 1000);
 
-    if (!refreshToken.rows[0]) {
-      return null;
-    }
-
-    return toRefreshTokenDomain(refreshToken.rows[0]);
+    await redisClient
+      .multi()
+      .SET(refreshTokenKey(refreshTokenHash), userId, {
+        expiration: { value: expiresAtSeconds, type: 'EX' },
+      })
+      .SADD(userKey, refreshTokenHash)
+      .EXPIREAT(userKey, expiresAtSeconds, 'NX')
+      .EXPIREAT(userKey, expiresAtSeconds, 'GT')
+      .exec();
   }
 
-  async findRefreshTokensByUserId(userId: string) {
-    const refreshToken = await pg.query<RefreshTokenRow>(
-      `SELECT * FROM refresh_tokens WHERE user_id = $1 AND expires_at > NOW()`,
-      [userId],
-    );
-
-    if (!refreshToken || refreshToken.rows.length < 1) {
-      return null;
-    }
-
-    return toRefreshTokenDomainList(refreshToken.rows);
+  async find(refreshTokenHash: string) {
+    return redisClient.GET(refreshTokenKey(refreshTokenHash));
   }
 
-  async updateRefreshToken(oldRefreshTokenHash: string, newRefreshToken: string, expiresAt: Date) {
-    const updated = await pg.query(
-      `UPDATE refresh_tokens SET refresh_token_hash = $1, expires_at = $2 WHERE refresh_token_hash = $3;`,
-      [newRefreshToken, expiresAt, oldRefreshTokenHash],
-    );
+  async rotate(oldRefreshTokenHash: string, newRefreshTokenHash: string, expiresAt: Date) {
+    const userId = await redisClient.GETDEL(refreshTokenKey(oldRefreshTokenHash));
+    if (!userId) return false;
 
-    return updated.rowCount;
+    await redisClient.SREM(userRefreshTokensKey(userId), oldRefreshTokenHash);
+    await this.create({ refreshTokenHash: newRefreshTokenHash, userId, expiresAt });
+
+    return true;
   }
 
-  async createRefreshToken({ refreshTokenHash, userId, expiresAt }: RefreshTokenInputDto) {
-    const refreshToken = await pg.query<RefreshTokenRow>(
-      `INSERT INTO refresh_tokens (refresh_token_hash, user_id, expires_at) VALUES ($1, $2, $3) RETURNING *`,
-      [refreshTokenHash, userId, expiresAt],
-    );
-
-    return toRefreshTokenDomain(refreshToken.rows[0]!);
+  async delete(refreshTokenHash: string) {
+    const userId = await redisClient.GETDEL(refreshTokenKey(refreshTokenHash));
+    if (userId) await redisClient.SREM(userRefreshTokensKey(userId), refreshTokenHash);
   }
 
-  async deleteRefreshToken(refreshTokenHash: string) {
-    await pg.query(`DELETE FROM refresh_tokens WHERE refresh_token_hash = $1`, [refreshTokenHash]);
-  }
+  async revokeAll(userId: string) {
+    const userKey = userRefreshTokensKey(userId);
+    const hashes = await redisClient.SMEMBERS(userKey);
 
-  async revoke(userId: string, client?: PoolClient) {
-    const executor = client ?? pg;
-    await executor.query(`DELETE FROM refresh_tokens WHERE user_id = $1;`, [userId]);
+    await redisClient.DEL([userKey, ...hashes.map(refreshTokenKey)]);
   }
 }
 
