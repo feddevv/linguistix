@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import { app } from '../../../app.js';
 import { pg } from '../../../lib/pg.js';
 import { hashString } from '../utils/hashing.js';
-import { clearThrottling, getCookie, loginAs } from './utils/utils.js';
+import { clearThrottling, getCookie, loginAs, clearRefreshTokens } from './utils/utils.js';
 import { daysFromNow } from '../utils/index.js';
 import { expectAuthCookiesCleared } from './utils/expects.js';
 import { RefreshTokenRepo } from '../auth.repository.js';
@@ -27,7 +27,7 @@ function refresh(refreshToken: string) {
 }
 
 async function isStored(refreshToken: string) {
-  return (await RefreshTokenRepo.findRefreshTokenByHash(hashString(refreshToken))) !== null;
+  return (await RefreshTokenRepo.find(hashString(refreshToken))) !== null;
 }
 
 // Logout is idempotent: it always succeeds, whether or not there was a session to end.
@@ -37,10 +37,12 @@ function expectLoggedOut(res: Response) {
 
 beforeEach(async () => {
   await clearThrottling();
+  await clearRefreshTokens();
   await pg.query('TRUNCATE TABLE users CASCADE;');
 });
 
 afterAll(async () => {
+  await clearRefreshTokens();
   await pg.query('TRUNCATE TABLE users CASCADE;');
   await pg.end();
 });
@@ -128,7 +130,7 @@ describe('POST /api/auth/logout', () => {
         },
         process.env.SECRET_KEY!,
       );
-      await RefreshTokenRepo.createRefreshToken({
+      await RefreshTokenRepo.create({
         refreshTokenHash: hashString(expired),
         userId: user.id,
         expiresAt: daysFromNow(15),

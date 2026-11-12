@@ -4,21 +4,20 @@ Linguistix stores its data in **PostgreSQL**, with migrations managed by [`node-
 
 - Migrations live in `migrations/`. From `apps/api`, run them with `pnpm migrate:dev up` (uses `../../.env`) or `pnpm migrate:test up` (uses `../../.env.test`).
 - The current schema is defined in a single migration: `migrations/1791052707599_init.ts`.
-- Short-lived data (one-time tokens, cooldowns, rate-limit counters and the email job queue) lives in **Redis** instead; see [Redis](#redis).
-- Most primary keys are UUID v7 (`DEFAULT uuidv7()`), so IDs sort by creation time. The built-in `uuidv7()` function needs **PostgreSQL 18+**. The `room_members` and `refresh_tokens` tables use a `BIGINT` identity column instead.
+- Short-lived data (refresh tokens, one-time tokens, cooldowns, rate-limit counters and the email job queue) lives in **Redis** instead; see [Redis](#redis).
+- Most primary keys are UUID v7 (`DEFAULT uuidv7()`), so IDs sort by creation time. The built-in `uuidv7()` function needs **PostgreSQL 18+**. The `room_members` table uses a `BIGINT` identity column instead.
 
 ## Overview
 
-| Table            | Purpose                                                           |
-| ---------------- | ----------------------------------------------------------------- |
-| `users`          | Every account on the platform, either a student or a teacher.     |
-| `rooms`          | Classrooms or study groups, each with one owner.                  |
-| `room_members`   | Join table linking users to the rooms they belong to.             |
-| `lessons`        | Scheduled live sessions in a room, run by a teacher.              |
-| `assignments`    | Homework a teacher sets for a room.                               |
-| `submissions`    | A student's answer to an assignment, with its grade and feedback. |
-| `words`          | Vocabulary entries, collected in a room or not tied to any room.  |
-| `refresh_tokens` | Hashed refresh tokens issued to users at login.                   |
+| Table          | Purpose                                                           |
+| -------------- | ----------------------------------------------------------------- |
+| `users`        | Every account on the platform, either a student or a teacher.     |
+| `rooms`        | Classrooms or study groups, each with one owner.                  |
+| `room_members` | Join table linking users to the rooms they belong to.             |
+| `lessons`      | Scheduled live sessions in a room, run by a teacher.              |
+| `assignments`  | Homework a teacher sets for a room.                               |
+| `submissions`  | A student's answer to an assignment, with its grade and feedback. |
+| `words`        | Vocabulary entries, collected in a room or not tied to any room.  |
 
 ## ER Diagram
 
@@ -35,7 +34,6 @@ erDiagram
     users ||--o{ submissions    : "submits"
     rooms |o--o{ words          : "collects"
     users ||--o{ words          : "adds"
-    users ||--o{ refresh_tokens : "holds"
 
     users {
         uuid      id PK
@@ -105,13 +103,6 @@ erDiagram
         text      content_sentence
         uuid      created_by FK
         timestamp created_at
-    }
-
-    refresh_tokens {
-        bigint    id PK
-        text      refresh_token_hash
-        timestamp expires_at
-        uuid      user_id FK
     }
 ```
 
@@ -230,30 +221,32 @@ Vocabulary entries, each with its meaning and an example sentence. A word with `
 
 > `created_by` is `NOT NULL` but its foreign key is `ON DELETE SET NULL`. Deleting a user who added any word therefore fails with a not-null violation.
 
-### `refresh_tokens`
-
-Refresh tokens issued to a user. Only a hash of each token is stored.
-
-| Column               | Type        | Null | Default                        | Notes                                |
-| -------------------- | ----------- | ---- | ------------------------------ | ------------------------------------ |
-| `id`                 | `BIGINT`    | no   | `GENERATED ALWAYS AS IDENTITY` | Primary key                          |
-| `refresh_token_hash` | `TEXT`      | no   |                                | Hash of the refresh token            |
-| `expires_at`         | `TIMESTAMP` | no   |                                |                                      |
-| `user_id`            | `UUID`      | no   |                                | FK → `users.id`, `ON DELETE CASCADE` |
-
 ## Delete Behaviour
 
-| When this is deleted… | Effect                                                                                                                                                                                                    |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **User**              | Blocked if the user owns a room or added any word. Otherwise their memberships, lessons, submissions and refresh tokens are deleted, and their assignments keep existing with `teacher_id` set to `NULL`. |
-| **Room**              | Its memberships, lessons, assignments (and so their submissions) and words are deleted.                                                                                                                   |
-| **Assignment**        | Its submissions are deleted.                                                                                                                                                                              |
+| When this is deleted… | Effect                                                                                                                                                                                    |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **User**              | Blocked if the user owns a room or added any word. Otherwise their memberships, lessons and submissions are deleted, and their assignments keep existing with `teacher_id` set to `NULL`. |
+| **Room**              | Its memberships, lessons, assignments (and so their submissions) and words are deleted.                                                                                                   |
+| **Assignment**        | Its submissions are deleted.                                                                                                                                                              |
 
 Redis keys are not linked to PostgreSQL rows, so deleting a user does **not** delete their one-time tokens. They expire on their own within 15 minutes; using one in the meantime fails with `USER_NOT_FOUND`.
 
 ## Redis
 
 Redis holds data that expires on its own. Every key below is set with a TTL, except the BullMQ queue keys.
+
+### Refresh tokens
+
+Login sessions (`RefreshTokenRepo` in `src/features/auth/auth.repository.ts`). Only the SHA-256 hash of a refresh token is stored.
+
+| Key                          | Value               | TTL                              | Purpose                                     |
+| ---------------------------- | ------------------- | -------------------------------- | ------------------------------------------- |
+| `refreshToken:<tokenHash>`   | user ID             | Until the session expires        | Looks up the user of a refresh token        |
+| `refreshToken:user:<userId>` | set of token hashes | Until the newest session expires | Lists a user's sessions, to revoke them all |
+
+- **Refreshing** rotates the token: the old key is read and deleted in one step (`GETDEL`), so a token can be used only once, even under concurrent requests.
+- **Logging out** deletes the token. **Resetting the password** revokes every session of the user.
+- Deleting a user in Postgres does not delete their tokens. Their next refresh fails with `404` and revokes the rest.
 
 ### One-time tokens
 

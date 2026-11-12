@@ -75,7 +75,7 @@ export async function login({ email, password }: LoginInput) {
     role: user.role,
   });
 
-  await RefreshTokenRepo.createRefreshToken({
+  await RefreshTokenRepo.create({
     refreshTokenHash: hashedRefreshToken,
     userId: user.id,
     expiresAt: date,
@@ -98,13 +98,16 @@ export async function refresh(refreshToken: string | undefined) {
   }
 
   const hashedRefreshToken = hashString(refreshToken);
-  const dbToken = await RefreshTokenRepo.findRefreshTokenByHash(hashedRefreshToken);
+  const userId = await RefreshTokenRepo.find(hashedRefreshToken);
 
-  if (!dbToken) throw new AppError('INVALID_TOKEN', 'Invalid or expired token');
+  if (!userId) throw new AppError('INVALID_TOKEN', 'Invalid or expired token');
 
-  const user = await UserRepo.findUserById(dbToken.userId);
+  const user = await UserRepo.findUserById(userId);
 
-  if (!user) throw new AppError('USER_NOT_FOUND', "Current user doesn't exist");
+  if (!user) {
+    await RefreshTokenRepo.revokeAll(userId);
+    throw new AppError('USER_NOT_FOUND', "User doesn't exist");
+  }
 
   const {
     accessToken: newAccessToken,
@@ -117,13 +120,13 @@ export async function refresh(refreshToken: string | undefined) {
     role: user.role,
   });
 
-  const updated = await RefreshTokenRepo.updateRefreshToken(
+  const rotated = await RefreshTokenRepo.rotate(
     hashedRefreshToken,
     hashedNewRefreshToken,
     newExpiresAt,
   );
 
-  if (!updated || updated < 1) throw new AppError('INVALID_TOKEN', 'Invalid or expired token');
+  if (!rotated) throw new AppError('INVALID_TOKEN', 'Invalid or expired token');
 
   return { newAccessToken, newRefreshToken };
 }
@@ -132,7 +135,7 @@ export async function logout(refreshToken: string | undefined) {
   if (!refreshToken) return;
 
   const hashedRefreshToken = hashString(refreshToken);
-  await RefreshTokenRepo.deleteRefreshToken(hashedRefreshToken);
+  await RefreshTokenRepo.delete(hashedRefreshToken);
 }
 
 export function google() {
@@ -199,7 +202,7 @@ export async function handleGoogleCallback(code: string) {
     role: user.role,
   });
 
-  await RefreshTokenRepo.createRefreshToken({
+  await RefreshTokenRepo.create({
     refreshTokenHash: hashedRefreshToken,
     userId: user.id,
     expiresAt: date,
@@ -287,8 +290,6 @@ export async function resetPassword(verificationToken: string, newPassword: stri
 
     if (!updated) throw new AppError('USER_NOT_FOUND', "This user doesn't exist");
 
-    await RefreshTokenRepo.revoke(consumed, client);
-
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');
@@ -296,4 +297,6 @@ export async function resetPassword(verificationToken: string, newPassword: stri
   } finally {
     client.release();
   }
+
+  await RefreshTokenRepo.revokeAll(consumed);
 }

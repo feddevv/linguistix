@@ -252,7 +252,9 @@ paths:
           valid **and** its session is stored on the server and has not expired.
           An access token cannot be used as a refresh token.
         - The new tokens are built from the current user record, so changes to the
-          user (for example, the role or email) are applied.
+          user (for example, the role or email) are applied. If the user no
+          longer exists, the response is `404` and all of their sessions are
+          ended.
         - The refresh token is **rotated**: the presented token is replaced by the
           new one and cannot be used again. If the same token is sent in two
           concurrent requests, only one of them succeeds. Other sessions of the
@@ -700,10 +702,10 @@ paths:
            15 minutes) and be the latest reset token of its user. Otherwise
            the response is `400` with `errorCode: INVALID_VERIFICATION_TOKEN`.
         2. The new password is hashed like in `POST /api/auth/register`.
-        3. In one transaction, the password of the user is replaced and
-           **all** sessions of the user are ended (their refresh tokens are
-           deleted). If the user no longer exists, the response is `404` with
-           `errorCode: USER_NOT_FOUND`.
+        3. The password of the user is replaced. If the user no longer
+           exists, the response is `404` with `errorCode: USER_NOT_FOUND`.
+        4. **All** sessions of the user are ended (their refresh tokens are
+           deleted).
 
         - Each token can be used only once. Because it is consumed in step 1,
           it cannot be used again after a `404` or `500` either; request a new
@@ -1826,8 +1828,8 @@ components:
 
     RefreshUserNotFound:
       description: |
-        The session is valid but its user no longer exists. Both session cookies
-        are cleared.
+        The session is valid but its user no longer exists. All sessions of the
+        user are ended, and both session cookies are cleared.
       headers:
         Set-Cookie:
           description: |
@@ -1843,7 +1845,7 @@ components:
             $ref: '#/components/schemas/Error'
           example:
             errorCode: USER_NOT_FOUND
-            message: Current user doesn't exist
+            message: User doesn't exist
 
     EmailConflict:
       description: A user with this email (case-insensitive) already exists.

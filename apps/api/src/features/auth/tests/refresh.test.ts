@@ -4,11 +4,14 @@ import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { app } from '../../../app.js';
 import { pg } from '../../../lib/pg.js';
 import { hashString } from '../utils/hashing.js';
-import { clearThrottling, getCookie, loginAs } from './utils/utils.js';
+import { clearThrottling, getCookie, loginAs, clearRefreshTokens } from './utils/utils.js';
 import { existingUser, seedUser } from './utils/seeds.js';
 import { daysFromNow } from '../utils/index.js';
 import { expectAuthCookiesCleared, expectErrorBody } from './utils/expects.js';
 import { RefreshTokenRepo } from '../auth.repository.js';
+import { redisClient } from '../../../lib/redis.js';
+
+const userTokensKey = (userId: string) => `refreshToken:user:${userId}`;
 
 const ENDPOINT = '/api/auth/refresh';
 
@@ -44,8 +47,8 @@ function expectNoNewTokens(res: Response) {
   }
 }
 
-async function expectRejected(res: Response) {
-  expect(res.status).toBe(401);
+async function expectRejected(res: Response, status = 401) {
+  expect(res.status).toBe(status);
   expect(res.headers['content-type']).toMatch(/json/);
   expectErrorBody(res.body);
   expectNoNewTokens(res);
@@ -53,10 +56,12 @@ async function expectRejected(res: Response) {
 
 beforeEach(async () => {
   await clearThrottling();
+  await clearRefreshTokens();
   await pg.query('TRUNCATE TABLE users CASCADE;');
 });
 
 afterAll(async () => {
+  await clearRefreshTokens();
   await pg.query('TRUNCATE TABLE users CASCADE;');
   await pg.end();
 });
@@ -203,9 +208,13 @@ describe('POST /api/auth/refresh', () => {
       const user = await seedUser();
       const { refreshToken } = await loginAs(user);
 
-      await refresh(refreshToken).expect(200);
+      const res = await refresh(refreshToken).expect(200);
+      const newRefreshToken = getCookie(res, 'refreshToken')!.value;
 
-      expect(await RefreshTokenRepo.findRefreshTokensByUserId(user.id)).toBeDefined();
+      expect(await redisClient.SMEMBERS(userTokensKey(user.id))).toEqual([
+        hashString(newRefreshToken),
+      ]);
+      expect(await RefreshTokenRepo.find(hashString(refreshToken))).toBeNull();
     });
 
     it('never stores the refresh token in plain text', async () => {
@@ -215,9 +224,10 @@ describe('POST /api/auth/refresh', () => {
       const res = await refresh(refreshToken).expect(200);
       const newRefreshToken = getCookie(res, 'refreshToken')!.value;
 
-      const stored = await RefreshTokenRepo.findRefreshTokensByUserId(user.id);
-      expect(stored?.map((row) => row.refreshTokenHash)).not.toContain(newRefreshToken);
-      expect(stored?.map((row) => row.refreshTokenHash)).not.toContain(refreshToken);
+      const stored = await redisClient.SMEMBERS(userTokensKey(user.id));
+      expect(stored).not.toContain(newRefreshToken);
+      expect(stored).not.toContain(refreshToken);
+      expect(await redisClient.EXISTS(`refreshToken:${newRefreshToken}`)).toBe(0);
     });
   });
 
@@ -286,7 +296,7 @@ describe('POST /api/auth/refresh', () => {
         { expiresIn: '15d' },
         'not-the-real-secret',
       );
-      await RefreshTokenRepo.createRefreshToken({
+      await RefreshTokenRepo.create({
         refreshTokenHash: hashString(forged),
         userId: user.id,
         expiresAt: daysFromNow(15),
@@ -336,7 +346,7 @@ describe('POST /api/auth/refresh', () => {
         role: user.role,
         exp: Math.floor(Date.now() / 1000) - 60,
       });
-      await RefreshTokenRepo.createRefreshToken({
+      await RefreshTokenRepo.create({
         refreshTokenHash: hashString(expired),
         userId: user.id,
         expiresAt: daysFromNow(15),
@@ -350,34 +360,32 @@ describe('POST /api/auth/refresh', () => {
     it('returns 401 when the stored session has expired even if the JWT is still valid', async () => {
       const user = await seedUser();
       const { refreshToken } = await loginAs(user);
-      await pg.query(
-        "UPDATE refresh_tokens SET expires_at = NOW() - INTERVAL '1 minute' WHERE user_id = $1;",
-        [user.id],
-      );
+      await redisClient.PEXPIRE(`refreshToken:${hashString(refreshToken)}`, 1);
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       const res = await refresh(refreshToken);
 
       await expectRejected(res);
     });
 
-    it('returns 401 when the session was revoked (row deleted)', async () => {
+    it('returns 401 when the session was revoked (tokens deleted)', async () => {
       const user = await seedUser();
       const { refreshToken } = await loginAs(user);
-      await pg.query('DELETE FROM refresh_tokens WHERE user_id = $1;', [user.id]);
+      await RefreshTokenRepo.revokeAll(user.id);
 
       const res = await refresh(refreshToken);
 
       await expectRejected(res);
     });
 
-    it('returns 401 when the user no longer exists', async () => {
+    it('returns 404 when the user no longer exists', async () => {
       const user = await seedUser();
       const { refreshToken } = await loginAs(user);
       await pg.query('DELETE FROM users WHERE id = $1;', [user.id]);
 
       const res = await refresh(refreshToken);
 
-      await expectRejected(res);
+      await expectRejected(res, 404);
     });
   });
 

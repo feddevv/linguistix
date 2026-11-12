@@ -6,7 +6,7 @@ import { pg } from '../../../lib/pg.js';
 import { redisClient } from '../../../lib/redis.js';
 import { hashString } from '../utils/hashing.js';
 import { UserRepo } from '../../user/user.repository.js';
-import { clearThrottling, clearVerificationTokens, loginAs, randomIp } from './utils/utils.js';
+import { clearThrottling, clearVerificationTokens, loginAs, randomIp, clearRefreshTokens } from './utils/utils.js';
 import { expectErrorBody } from './utils/expects.js';
 import { existingUser, seedToken, seedUser } from './utils/seeds.js';
 
@@ -44,6 +44,7 @@ function refresh(refreshToken: string) {
 beforeEach(async () => {
   await clearThrottling();
   await clearVerificationTokens();
+  await clearRefreshTokens();
   await pg.query('TRUNCATE TABLE users CASCADE;');
 });
 
@@ -54,6 +55,7 @@ afterEach(() => {
 afterAll(async () => {
   await clearThrottling();
   await clearVerificationTokens();
+  await clearRefreshTokens();
   await pg.query('TRUNCATE TABLE users CASCADE;');
   await pg.end();
   await redisClient.quit();
