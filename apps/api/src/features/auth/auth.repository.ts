@@ -12,7 +12,7 @@ class RefreshToken {
     await redisClient
       .multi()
       .SET(refreshTokenKey(refreshTokenHash), userId, {
-        expiration: { value: expiresAtSeconds, type: 'EX' },
+        expiration: { value: expiresAtSeconds, type: 'EXAT' },
       })
       .SADD(userKey, refreshTokenHash)
       .EXPIREAT(userKey, expiresAtSeconds, 'NX')
