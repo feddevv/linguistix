@@ -1,24 +1,24 @@
 # Database Schema
 
-Linguistix uses **PostgreSQL**, with migrations managed by [`node-pg-migrate`](https://github.com/salsita/node-pg-migrate).
+Linguistix stores its data in **PostgreSQL**, with migrations managed by [`node-pg-migrate`](https://github.com/salsita/node-pg-migrate).
 
 - Migrations live in `migrations/`. From `apps/api`, run them with `pnpm migrate:dev up` (uses `../../.env`) or `pnpm migrate:test up` (uses `../../.env.test`).
 - The current schema is defined in a single migration: `migrations/1791052707599_init.ts`.
-- Most primary keys are UUID v7 (`DEFAULT uuidv7()`), so IDs sort by creation time. The built-in `uuidv7()` function needs **PostgreSQL 18+**. The `room_members`, `refresh_tokens` and `email_verification_tokens` tables use a `BIGINT` identity column instead.
+- Short-lived data (one-time tokens, cooldowns, rate-limit counters and the email job queue) lives in **Redis** instead; see [Redis](#redis).
+- Most primary keys are UUID v7 (`DEFAULT uuidv7()`), so IDs sort by creation time. The built-in `uuidv7()` function needs **PostgreSQL 18+**. The `room_members` and `refresh_tokens` tables use a `BIGINT` identity column instead.
 
 ## Overview
 
-| Table                       | Purpose                                                           |
-| --------------------------- | ----------------------------------------------------------------- |
-| `users`                     | Every account on the platform, either a student or a teacher.     |
-| `rooms`                     | Classrooms or study groups, each with one owner.                  |
-| `room_members`              | Join table linking users to the rooms they belong to.             |
-| `lessons`                   | Scheduled live sessions in a room, run by a teacher.              |
-| `assignments`               | Homework a teacher sets for a room.                               |
-| `submissions`               | A student's answer to an assignment, with its grade and feedback. |
-| `words`                     | Vocabulary entries, collected in a room or not tied to any room.  |
-| `refresh_tokens`            | Hashed refresh tokens issued to users at login.                   |
-| `email_verification_tokens` | Hashed email verification token of an unverified user.            |
+| Table            | Purpose                                                           |
+| ---------------- | ----------------------------------------------------------------- |
+| `users`          | Every account on the platform, either a student or a teacher.     |
+| `rooms`          | Classrooms or study groups, each with one owner.                  |
+| `room_members`   | Join table linking users to the rooms they belong to.             |
+| `lessons`        | Scheduled live sessions in a room, run by a teacher.              |
+| `assignments`    | Homework a teacher sets for a room.                               |
+| `submissions`    | A student's answer to an assignment, with its grade and feedback. |
+| `words`          | Vocabulary entries, collected in a room or not tied to any room.  |
+| `refresh_tokens` | Hashed refresh tokens issued to users at login.                   |
 
 ## ER Diagram
 
@@ -36,7 +36,6 @@ erDiagram
     rooms |o--o{ words          : "collects"
     users ||--o{ words          : "adds"
     users ||--o{ refresh_tokens : "holds"
-    users ||--o| email_verification_tokens : "verifies with"
 
     users {
         uuid      id PK
@@ -113,14 +112,6 @@ erDiagram
         text      refresh_token_hash
         timestamp expires_at
         uuid      user_id FK
-    }
-
-    email_verification_tokens {
-        bigint    id PK
-        text      token_hash UK
-        timestamp expires_at
-        timestamp used_at
-        uuid      user_id FK, UK
     }
 ```
 
@@ -250,22 +241,44 @@ Refresh tokens issued to a user. Only a hash of each token is stored.
 | `expires_at`         | `TIMESTAMP` | no   |                                |                                      |
 | `user_id`            | `UUID`      | no   |                                | FK → `users.id`, `ON DELETE CASCADE` |
 
-### `email_verification_tokens`
-
-The email verification token of a user. Only a hash of the token is stored. A user has at most one token: `user_id` is unique, so issuing a new token replaces the old one.
-
-| Column       | Type        | Null | Default                        | Notes                                        |
-| ------------ | ----------- | ---- | ------------------------------ | -------------------------------------------- |
-| `id`         | `BIGINT`    | no   | `GENERATED ALWAYS AS IDENTITY` | Primary key                                  |
-| `token_hash` | `TEXT`      | no   |                                | Unique. Hash of the verification token       |
-| `expires_at` | `TIMESTAMP` | no   |                                |                                              |
-| `used_at`    | `TIMESTAMP` | yes  |                                | `NULL` until the token is used               |
-| `user_id`    | `UUID`      | no   |                                | Unique. FK → `users.id`, `ON DELETE CASCADE` |
-
 ## Delete Behaviour
 
-| When this is deleted… | Effect                                                                                                                                                                                                                              |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **User**              | Blocked if the user owns a room or added any word. Otherwise their memberships, lessons, submissions, refresh tokens and email verification token are deleted, and their assignments keep existing with `teacher_id` set to `NULL`. |
-| **Room**              | Its memberships, lessons, assignments (and so their submissions) and words are deleted.                                                                                                                                             |
-| **Assignment**        | Its submissions are deleted.                                                                                                                                                                                                        |
+| When this is deleted… | Effect                                                                                                                                                                                                    |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **User**              | Blocked if the user owns a room or added any word. Otherwise their memberships, lessons, submissions and refresh tokens are deleted, and their assignments keep existing with `teacher_id` set to `NULL`. |
+| **Room**              | Its memberships, lessons, assignments (and so their submissions) and words are deleted.                                                                                                                   |
+| **Assignment**        | Its submissions are deleted.                                                                                                                                                                              |
+
+Redis keys are not linked to PostgreSQL rows, so deleting a user does **not** delete their one-time tokens. They expire on their own within 15 minutes; using one in the meantime fails with `USER_NOT_FOUND`.
+
+## Redis
+
+Redis holds data that expires on its own. Every key below is set with a TTL, except the BullMQ queue keys.
+
+### One-time tokens
+
+Email verification and password reset tokens (`VerificationTokenRepo` in `src/features/auth/auth.repository.ts`). Only the SHA-256 hash of a token is stored. `<subject>` is the purpose of the token: `email` for email verification, `reset-password` for password reset. Tokens with different subjects never match each other.
+
+| Key                                         | Value      | TTL        | Purpose                                          |
+| ------------------------------------------- | ---------- | ---------- | ------------------------------------------------ |
+| `verificationToken:<tokenHash>:<subject>`   | user ID    | 15 minutes | Looks up the user of a token                     |
+| `verificationToken:user:<userId>:<subject>` | token hash | 15 minutes | Finds the current token of a user, to replace it |
+
+- **Issuing** a token deletes the user's previous token with the same subject, so a user has at most one valid token per subject.
+- **Consuming** a token reads and deletes it in one step (`GETDEL`), so it can be used only once, even under concurrent requests. The user's index key is deleted too.
+- An expired token simply no longer exists; there is no `used_at` or `expires_at` to check.
+
+### Cooldowns and rate limits
+
+| Key                          | TTL        | Purpose                                                                                                  |
+| ---------------------------- | ---------- | -------------------------------------------------------------------------------------------------------- |
+| `cooldown:<email>:<subject>` | 60 seconds | Per-email cooldown. `<subject>` is `resend-email-verification` or `reset-password`                       |
+| `rl:global:<ip>`             | 1 minute   | Global rate limit, 100 requests per IP                                                                   |
+| `rl:auth:<ip>:<path>`        | 15 minutes | Auth rate limit, 10 requests per IP and endpoint (register, login, Google callback)                      |
+| `rl:strict:<ip>:<path>`      | 10 minutes | Strict rate limit, 3 requests per IP and endpoint (resend verification, forgot password, reset password) |
+
+`<ip>` is the client IP, with IPv6 addresses grouped by `/56` subnet.
+
+### Email queue
+
+Emails are sent through the BullMQ queue `email-queue` (keys prefixed `bull:email-queue:`). Jobs are retried up to 3 times with exponential backoff; completed jobs are removed, and the last 500 failed jobs are kept.
