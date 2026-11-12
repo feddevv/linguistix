@@ -1,13 +1,13 @@
 import { describe, it, beforeEach, afterAll, expect, vi } from 'vitest';
 import request from 'supertest';
-import crypto from 'crypto';
 import { app } from '../../../app.js';
 import { pg } from '../../../lib/pg.js';
 import { redisClient } from '../../../lib/redis.js';
 import { UserRepo } from '../../user/user.repository.js';
-import { clearThrottling, existingUser, seedUser } from './utils/utils.js';
+import { clearThrottling, randomIp } from './utils/utils.js';
 import { expectErrorBody } from './utils/expects.js';
 import { emailQueue } from '../../../jobs/queues/email.queue.js';
+import { seedUser, existingUser } from './utils/seeds.js';
 
 const ENDPOINT = '/api/auth/resend-verification';
 const GENERIC_MESSAGE =
@@ -17,10 +17,6 @@ vi.mock('../../../jobs/queues/email.queue.ts', () => ({
   emailQueue: { add: vi.fn() },
 }));
 const addToQueueMock = vi.mocked(emailQueue.add);
-
-function randomIp() {
-  return `10.${crypto.randomInt(256)}.${crypto.randomInt(256)}.${crypto.randomInt(256)}`;
-}
 
 // Every request gets its own client IP so the per-IP rate limit doesn't leak between tests.
 function resendVerification(body: unknown, ip = randomIp()) {

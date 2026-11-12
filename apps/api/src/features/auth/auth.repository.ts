@@ -1,15 +1,8 @@
 import type { PoolClient } from 'pg';
 import { pg } from '../../lib/pg.js';
-import {
-  toEmailVerificationTokenDto,
-  toRefreshTokenDomain,
-  toRefreshTokenDomainList,
-} from '../../utils/mappers.js';
-import type {
-  EmailVerificationTokenRow,
-  RefreshTokenInputDto,
-  RefreshTokenRow,
-} from './auth.types.js';
+import { toRefreshTokenDomain, toRefreshTokenDomainList } from '../../utils/mappers.js';
+import type { RefreshTokenInputDto, RefreshTokenRow } from './auth.types.js';
+import { redisClient } from '../../lib/redis.js';
 
 class RefreshToken {
   async findRefreshTokenByHash(refreshTokenHash: string) {
@@ -59,58 +52,39 @@ class RefreshToken {
   async deleteRefreshToken(refreshTokenHash: string) {
     await pg.query(`DELETE FROM refresh_tokens WHERE refresh_token_hash = $1`, [refreshTokenHash]);
   }
+
+  async revoke(userId: string, client?: PoolClient) {
+    const executor = client ?? pg;
+    await executor.query(`DELETE FROM refresh_tokens WHERE user_id = $1;`, [userId]);
+  }
 }
 
 interface CreateTokenParameters {
-  expiresAt: Date;
   tokenHash: string;
   userId: string;
-  client?: PoolClient;
+  subject: string;
+  ttlSeconds: number;
 }
 
-class EmailVerificationToken {
-  async createToken({ expiresAt, tokenHash, userId, client }: CreateTokenParameters) {
-    const executor = client ?? pg;
-    const token = await executor.query<EmailVerificationTokenRow>(
-      `
-        INSERT INTO email_verification_tokens (expires_at, token_hash, user_id)
-        VALUES ($1, $2, $3) 
-        RETURNING *;
-      `,
-      [expiresAt, tokenHash, userId],
-    );
+class VerificationToken {
+  async create({ tokenHash, userId, subject, ttlSeconds }: CreateTokenParameters) {
+    const userKey = `verificationToken:user:${userId}:${subject}`;
+    const prevHash = await redisClient.GETDEL(userKey);
 
-    return toEmailVerificationTokenDto(token.rows[0]!);
+    const multi = redisClient.multi();
+    if (prevHash) await redisClient.DEL(`verificationToken:${prevHash}:${subject}`);
+    multi.SETEX(`verificationToken:${tokenHash}:${subject}`, ttlSeconds, userId);
+    multi.SETEX(userKey, ttlSeconds, tokenHash);
+    await multi.exec();
   }
 
-  async consumeToken(hashedToken: string, client?: PoolClient) {
-    const executor = client ?? pg;
-    const token = await executor.query<Pick<EmailVerificationTokenRow, 'user_id'>>(
-      `UPDATE email_verification_tokens SET used_at = NOW() 
-      WHERE token_hash = $1 AND used_at IS NULL AND expires_at > NOW()
-      RETURNING user_id;`,
-      [hashedToken],
-    );
+  async consume(tokenHash: string, subject: string) {
+    const userId = await redisClient.GETDEL(`verificationToken:${tokenHash}:${subject}`);
+    if (userId) await redisClient.DEL(`verificationToken:user:${userId}:${subject}`);
 
-    if (!token.rows[0]) return null;
-
-    return { userId: token.rows[0].user_id };
-  }
-
-  async rotateToken(userId: string, newTokenHash: string, newExpiresAt: Date) {
-    const token = await pg.query(
-      `
-        INSERT INTO email_verification_tokens (token_hash, expires_at, user_id)
-        VALUES ($1, $2, $3)
-        ON CONFLICT (user_id) DO UPDATE 
-        SET token_hash = EXCLUDED.token_hash, expires_at = EXCLUDED.expires_at, used_at = NULL;
-      `,
-      [newTokenHash, newExpiresAt, userId],
-    );
-
-    return token.rowCount;
+    return userId;
   }
 }
 
 export const RefreshTokenRepo = new RefreshToken();
-export const EmailVerificationTokenRepo = new EmailVerificationToken();
+export const VerificationTokenRepo = new VerificationToken();

@@ -10,7 +10,9 @@ import { deleteJWTCookie, setJWTCookie } from './utils/index.js';
 import type {
   OAuthQueryString,
   ResendVerificationBody,
+  ForgotPasswordBody,
   VerifyEmailQueryString,
+  ResetPasswordBody,
 } from './auth.schemas.js';
 import { AppError } from '../../errors/AppError.js';
 import type { ErrorCode } from '@repo/shared';
@@ -170,7 +172,30 @@ export async function resendVerification(
   req: Request<unknown, unknown, ResendVerificationBody>,
   res: Response,
 ) {
-  const message = await authService.resendVerification(req.body.email);
+  await authService.resendVerification(req.body.email);
 
-  res.json({ message });
+  res.json({
+    message: "If an account with this email exists and isn't verified yet, we've sent a new verification link.",
+  });
+}
+
+export async function forgotPassword(
+  req: Request<unknown, unknown, ForgotPasswordBody>,
+  res: Response,
+) {
+  await authService.forgotPassword(req.body.email);
+
+  res.json({
+    message: "If an account with this email exists and is verified, we've sent a new password reset link.",
+  });
+}
+
+export async function resetPassword(
+  req: Request<unknown, unknown, ResetPasswordBody>,
+  res: Response,
+) {
+  const { newPassword, verificationToken } = req.body;
+  await authService.resetPassword(verificationToken, newPassword);
+
+  res.json({ message: 'Password has been reset' });
 }

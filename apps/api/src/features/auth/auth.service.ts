@@ -1,4 +1,4 @@
-import { EmailVerificationTokenRepo, RefreshTokenRepo } from './auth.repository.js';
+import { RefreshTokenRepo, VerificationTokenRepo } from './auth.repository.js';
 import type { LoginInput, RegisterInput } from '@repo/shared';
 import { compare, hash } from 'bcrypt';
 import { AppError } from '../../errors/AppError.js';
@@ -35,41 +35,27 @@ export async function register({ firstName, lastName, password, email, role }: R
   const sha256hash = hashString(password);
   const passwordHash = await hash(sha256hash, 10);
 
-  const client = await pg.connect();
-  try {
-    await client.query('BEGIN');
+  const user = await UserRepo.create({
+    firstName,
+    lastName,
+    password: passwordHash,
+    email,
+    role,
+    isVerified: false,
+  });
 
-    const user = await UserRepo.create({
-      firstName,
-      lastName,
-      password: passwordHash,
-      email,
-      role,
-      isVerified: false,
-      client,
-    });
+  const verificationToken = issueRandomToken();
 
-    const verificationToken = issueRandomToken();
-    const expiresAt = daysFromNow(1);
+  await VerificationTokenRepo.create({
+    tokenHash: hashString(verificationToken),
+    subject: 'email',
+    userId: user.id,
+    ttlSeconds: 15 * 60, // 15 minutes
+  });
 
-    await EmailVerificationTokenRepo.createToken({
-      tokenHash: hashString(verificationToken),
-      userId: user.id,
-      expiresAt,
-      client,
-    });
+  await emailQueue.add('email-verification', { email: user.email, verificationToken });
 
-    await client.query('COMMIT');
-
-    await emailQueue.add('email-verification', { email: user.email, verificationToken });
-
-    return user;
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
+  return user;
 }
 
 export async function login({ email, password }: LoginInput) {
@@ -228,26 +214,80 @@ export async function handleGoogleCallback(code: string) {
 export async function verifyEmail(token: string) {
   const hashedToken = hashString(token);
 
+  const consumed = await VerificationTokenRepo.consume(hashedToken, 'email');
+
+  if (!consumed)
+    throw new AppError(
+      'INVALID_VERIFICATION_TOKEN',
+      'Provided email verification token is invalid or has expired',
+    );
+  else {
+    const user = await UserRepo.findUserById(consumed);
+
+    if (!user) throw new AppError('USER_NOT_FOUND', "This user doesn't exist");
+    else if (user.isVerified)
+      throw new AppError('EMAIL_ALREADY_VERIFIED', 'This email is already verified');
+  }
+
+  await UserRepo.updateIsVerified(true, consumed);
+}
+
+export async function resendVerification(email: string) {
+  const user = await UserRepo.findUserByEmail(email);
+
+  if (!user) return;
+  else if (user?.isVerified) return;
+
+  const verificationToken = issueRandomToken();
+
+  await VerificationTokenRepo.create({
+    tokenHash: hashString(verificationToken),
+    subject: 'email',
+    userId: user.id,
+    ttlSeconds: 15 * 60, // 15 minutes
+  });
+
+  await emailQueue.add('email-verification', { email: user.email, verificationToken });
+}
+
+export async function forgotPassword(email: string) {
+  const user = await UserRepo.findUserByEmail(email);
+
+  if (!user) return;
+  else if (!user.isVerified) return;
+
+  const verificationToken = issueRandomToken();
+
+  await VerificationTokenRepo.create({
+    tokenHash: hashString(verificationToken),
+    subject: 'reset-password',
+    userId: user.id,
+    ttlSeconds: 15 * 60, // 15 minutes
+  });
+
+  await emailQueue.add('reset-password', { email: user.email, verificationToken });
+}
+
+export async function resetPassword(verificationToken: string, newPassword: string) {
+  const hashedToken = hashString(verificationToken);
+
+  const consumed = await VerificationTokenRepo.consume(hashedToken, 'reset-password');
+
+  if (!consumed)
+    throw new AppError('INVALID_VERIFICATION_TOKEN', 'Invalid or expired verification token');
+
+  const sha256hash = hashString(newPassword);
+  const hashedPassword = await hash(sha256hash, 10);
+
   const client = await pg.connect();
   try {
     await client.query('BEGIN');
 
-    const consumed = await EmailVerificationTokenRepo.consumeToken(hashedToken, client);
+    const updated = await UserRepo.updatePassword(consumed, hashedPassword, client);
 
-    if (!consumed)
-      throw new AppError(
-        'INVALID_VERIFICATION_TOKEN',
-        'Provided email verification token is invalid or has expired',
-      );
-    else {
-      const user = await UserRepo.findUserById(consumed.userId);
+    if (!updated) throw new AppError('USER_NOT_FOUND', "This user doesn't exist");
 
-      if (!user) throw new AppError('USER_NOT_FOUND', "This user doesn't exist");
-      else if (user.isVerified)
-        throw new AppError('EMAIL_ALREADY_VERIFIED', 'This email is already verified');
-    }
-
-    await UserRepo.updateIsVerified(true, consumed.userId, client);
+    await RefreshTokenRepo.revoke(consumed, client);
 
     await client.query('COMMIT');
   } catch (err) {
@@ -256,22 +296,4 @@ export async function verifyEmail(token: string) {
   } finally {
     client.release();
   }
-}
-
-export async function resendVerification(email: string) {
-  const message =
-    "If an account with this email exists and isn't verified yet, we've sent a new verification link.";
-  const user = await UserRepo.findUserByEmail(email);
-
-  if (!user) return message;
-  else if (user?.isVerified) return message;
-
-  const token = issueRandomToken();
-  const expiresAt = daysFromNow(1);
-
-  await emailQueue.add('email-verification', { email: user.email, verificationToken: token });
-
-  await EmailVerificationTokenRepo.rotateToken(user.id, hashString(token), expiresAt);
-
-  return message;
 }

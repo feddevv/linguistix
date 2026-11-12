@@ -1,3 +1,4 @@
+import { registerSchema } from '@repo/shared';
 import z from 'zod';
 
 export const oauthSchema = z.object({
@@ -21,3 +22,27 @@ export const resendVerificationSchema = z.object({
     .max(255, 'Email should not exceed 255 characters'),
 });
 export type ResendVerificationBody = z.infer<typeof resendVerificationSchema>;
+
+export const forgotPasswordSchema = z.object({
+  email: resendVerificationSchema.shape.email,
+});
+
+export type ForgotPasswordBody = z.infer<typeof forgotPasswordSchema>;
+
+export const resetPasswordSchema = z
+  .object({
+    verificationToken: verifyEmailSchema.shape.token,
+    newPassword: registerSchema.shape.password,
+    confirmPassword: registerSchema.shape.confirmPassword,
+  })
+  .superRefine(({ newPassword, confirmPassword }, ctx) => {
+    if (newPassword !== confirmPassword) {
+      ctx.addIssue({
+        code: 'custom',
+        message: "Passwords don't match",
+        path: ['confirmPassword'],
+      });
+    }
+  });
+
+export type ResetPasswordBody = z.infer<typeof resetPasswordSchema>;

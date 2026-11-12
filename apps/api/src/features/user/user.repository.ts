@@ -113,6 +113,16 @@ class User {
 
     return user.rowCount;
   }
+
+  async updatePassword(userId: string, newHashedPassword: string, client?: PoolClient) {
+    const executor = client ?? pg;
+    const user = await executor.query(`UPDATE users SET password = $1 WHERE id = $2;`, [
+      newHashedPassword,
+      userId,
+    ]);
+
+    return user.rowCount;
+  }
 }
 
 export const UserRepo = new User();

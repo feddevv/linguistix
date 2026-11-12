@@ -14,3 +14,13 @@ export async function sendVerificationEmail(to: string, verificationToken: strin
 
   await sendEmail(to, 'Linguistix email verification', `Verify your email ${url}`);
 }
+
+export async function sendResetPassword(to: string, verificationToken: string) {
+  const url = `${process.env.FRONTEND_URL}?token=${verificationToken}`;
+
+  await sendEmail(
+    to,
+    'Linguistix reset password',
+    `Here is the link to reset your password - ${url}`,
+  );
+}
