@@ -106,7 +106,7 @@ export async function refresh(refreshToken: string | undefined) {
 
   if (!user) {
     await RefreshTokenRepo.revokeAll(userId);
-    throw new AppError('INVALID_TOKEN', 'Invalid or expired token');
+    throw new AppError('USER_NOT_FOUND', "User doesn't exist");
   }
 
   const {
