@@ -246,7 +246,7 @@ Login sessions (`RefreshTokenRepo` in `src/features/auth/auth.repository.ts`). O
 
 - **Refreshing** rotates the token: the old key is read and deleted in one step (`GETDEL`), so a token can be used only once, even under concurrent requests.
 - **Logging out** deletes the token. **Resetting the password** revokes every session of the user.
-- Deleting a user in Postgres does not delete their tokens. Their next refresh fails with `401` and revokes the rest.
+- Deleting a user in Postgres does not delete their tokens. Their next refresh fails with `404` and revokes the rest.
 
 ### One-time tokens
 

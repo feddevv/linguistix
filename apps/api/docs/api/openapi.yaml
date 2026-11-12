@@ -253,7 +253,7 @@ paths:
           An access token cannot be used as a refresh token.
         - The new tokens are built from the current user record, so changes to the
           user (for example, the role or email) are applied. If the user no
-          longer exists, the response is `401` and all of their sessions are
+          longer exists, the response is `404` and all of their sessions are
           ended.
         - The refresh token is **rotated**: the presented token is replaced by the
           new one and cannot be used again. If the same token is sent in two
@@ -261,7 +261,7 @@ paths:
           user are not affected.
         - On success, the response sets the same two cookies as
           `POST /api/auth/login`.
-        - On `401` or `500`, both `accessToken` and `refreshToken` cookies
+        - On `401`, `404` or `500`, both `accessToken` and `refreshToken` cookies
           are cleared. On `429` the cookies are not changed.
       responses:
         '200':
@@ -270,6 +270,8 @@ paths:
           $ref: '#/components/responses/MalformedJsonBody'
         '401':
           $ref: '#/components/responses/RefreshUnauthorized'
+        '404':
+          $ref: '#/components/responses/RefreshUserNotFound'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
         '429':
@@ -1823,6 +1825,27 @@ components:
               value:
                 errorCode: INVALID_TOKEN
                 message: Invalid or expired token
+
+    RefreshUserNotFound:
+      description: |
+        The session is valid but its user no longer exists. All sessions of the
+        user are ended, and both session cookies are cleared.
+      headers:
+        Set-Cookie:
+          description: |
+            Two cookies are cleared, one per `Set-Cookie` header: `accessToken`
+            and `refreshToken`, each with an empty value and an expiry date in
+            the past.
+          schema:
+            type: string
+          example: refreshToken=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            errorCode: USER_NOT_FOUND
+            message: User doesn't exist
 
     EmailConflict:
       description: A user with this email (case-insensitive) already exists.
