@@ -4,7 +4,7 @@ import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { app } from '../../../app.js';
 import { pg } from '../../../lib/pg.js';
 import { hashString } from '../utils/hashing.js';
-import { clearThrottling, getCookie } from './utils/utils.js';
+import { clearThrottling, getCookie, clearRefreshTokens } from './utils/utils.js';
 import { expectNoAuthCookies } from './utils/expects.js';
 import { UserRepo } from '../../user/user.repository.js';
 import { RefreshTokenRepo } from '../auth.repository.js';
@@ -73,10 +73,10 @@ async function expectSessionIssued(res: Response) {
   expect(refreshToken?.value).toBeTruthy();
 
   const payload = jwt.verify(accessToken!.value, process.env.SECRET_KEY!) as JwtPayload;
-  const stored = await RefreshTokenRepo.findRefreshTokenByHash(hashString(refreshToken!.value));
+  const stored = await RefreshTokenRepo.find(hashString(refreshToken!.value));
 
   expect(stored).not.toBeNull();
-  expect(stored!.userId).toBe(payload.id);
+  expect(stored).toBe(payload.id);
 
   return payload.id as string;
 }
@@ -85,10 +85,12 @@ beforeEach(async () => {
   vi.stubEnv('FRONTEND_URL', FRONTEND_URL);
   getGoogleTokensMock.mockReset();
   await clearThrottling();
+  await clearRefreshTokens();
   await pg.query('TRUNCATE TABLE users CASCADE;');
 });
 
 afterAll(async () => {
+  await clearRefreshTokens();
   await pg.query('TRUNCATE TABLE users CASCADE;');
   await pg.end();
 });

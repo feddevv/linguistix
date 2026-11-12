@@ -50,6 +50,11 @@ export async function clearVerificationTokens() {
   if (keys.length) await redisClient.DEL(keys);
 }
 
+export async function clearRefreshTokens() {
+  const keys = await redisClient.KEYS('refreshToken:*');
+  if (keys.length) await redisClient.DEL(keys);
+}
+
 export function randomIp() {
   return `10.${crypto.randomInt(256)}.${crypto.randomInt(256)}.${crypto.randomInt(256)}`;
 }
