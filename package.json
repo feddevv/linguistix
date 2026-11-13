@@ -4,13 +4,19 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "prepare": "husky",
+    "test": "pnpm --filter api test",
+    "typecheck": "pnpm -r --if-present typecheck"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "private": true,
   "devDependencies": {
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.6.0",
     "prettier": "^3.9.9"
   }
 }

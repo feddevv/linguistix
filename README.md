@@ -28,3 +28,15 @@ docker compose up -d  # start PostgreSQL
 Database settings are read from the root `.env` (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `DB_PORT`).
 
 See each app's README for how to run it.
+
+## Git hooks
+
+Hooks are managed by [Husky](https://typicode.github.io/husky/) and installed automatically by `pnpm install`.
+
+| Hook         | What it does                                                                                                                                                        |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pre-commit` | [lint-staged](https://github.com/lint-staged/lint-staged): ESLint `--fix` + Prettier on staged files (configs: `.lintstagedrc.json`, `apps/api/.lintstagedrc.json`) |
+| `commit-msg` | [commitlint](https://commitlint.js.org/): enforces [Conventional Commits](https://www.conventionalcommits.org/) (`commitlint.config.mjs`)                           |
+| `pre-push`   | `pnpm typecheck` across all workspaces                                                                                                                              |
+
+To skip hooks in an emergency, use `git commit --no-verify` / `git push --no-verify`.

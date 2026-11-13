@@ -10,7 +10,8 @@
     "dev": "nodemon --exec tsx --env-file=../../.env src/server.ts",
     "test": "pnpm run migrate:test up && dotenv -e ../../.env.test -- vitest --no-file-parallelism",
     "lint": "eslint .",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@repo/shared": "workspace:*",
