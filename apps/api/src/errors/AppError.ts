@@ -17,6 +17,8 @@ export const ERROR_STATUS_MAP: Record<ErrorCode, number> = {
   EMAIL_ALREADY_VERIFIED: 409,
   COOLDOWN: 429,
   REQUEST_LIMIT: 429,
+  UNAUTHORIZED: 401,
+  FORBIDDEN: 403,
 };
 
 export class AppError extends Error {

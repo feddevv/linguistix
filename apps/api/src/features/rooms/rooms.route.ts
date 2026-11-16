@@ -1,0 +1,15 @@
+import { Router } from 'express';
+import { createRoomSchema } from '@repo/shared';
+import { validate } from '../../middlewares/validator.js';
+import { requireAuth, requireRole } from '../../middlewares/auth.js';
+import * as roomsController from './rooms.controller.js';
+
+export const router: Router = Router();
+
+router.post(
+  '/rooms',
+  requireAuth,
+  requireRole('teacher'),
+  validate({ body: createRoomSchema }),
+  roomsController.createRoom,
+);
