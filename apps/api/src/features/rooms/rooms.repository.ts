@@ -2,27 +2,43 @@ import { DatabaseError, type PoolClient } from 'pg';
 import { pg } from '../../lib/pg.js';
 import { AppError } from '../../errors/AppError.js';
 import { toRoomDomain } from '../../utils/mappers.js';
-import type { CreateRoomParameters, RoomDomain, RoomRow } from './rooms.types.js';
+import type { RoomDomain, RoomRow } from './rooms.types.js';
 
-const ROOM_COLUMNS = 'id, room_name, meeting_url, owner_id, created_at::text AS created_at';
+const ROOM_COLUMNS =
+  'id, room_name, meeting_url, owner_id, invite_code, created_at::text AS created_at';
+
+export interface CreateRoomParameters {
+  roomName: string;
+  meetingUrl?: string | undefined;
+  ownerId: string;
+  inviteCode: string;
+}
 
 class Room {
-  async create({ roomName, meetingUrl, ownerId }: CreateRoomParameters, client?: PoolClient) {
+  /**
+   * Returns `null` when `inviteCode` is already taken. Uses ON CONFLICT instead of
+   * surfacing 23505 so the caller's transaction is not aborted and it can retry.
+   */
+  async create(
+    { roomName, meetingUrl, ownerId, inviteCode }: CreateRoomParameters,
+    client?: PoolClient,
+  ): Promise<RoomDomain | null> {
     const executor = client ?? pg;
     try {
       const room = await executor.query<RoomRow>(
         `
-          INSERT INTO rooms (room_name, meeting_url, owner_id)
-          VALUES ($1, $2, $3)
+          INSERT INTO rooms (room_name, meeting_url, owner_id, invite_code)
+          VALUES ($1, $2, $3, $4)
+          ON CONFLICT (invite_code) DO NOTHING
           RETURNING ${ROOM_COLUMNS};
         `,
-        [roomName, meetingUrl ?? null, ownerId],
+        [roomName, meetingUrl ?? null, ownerId, inviteCode],
       );
 
-      return toRoomDomain(room.rows[0]!);
+      return room.rows[0] ? toRoomDomain(room.rows[0]) : null;
     } catch (err) {
-      if (err instanceof DatabaseError && err.code === '23503') {
-        throw new AppError('USER_NOT_FOUND', "This user doesn't exist");
+      if (err instanceof DatabaseError) {
+        if (err.code === '23503') throw new AppError('USER_NOT_FOUND', "This user doesn't exist");
       }
 
       throw err;

@@ -15,6 +15,7 @@ function toRoomResponse(room: RoomDomain & { memberIds: string[] }): RoomRespons
       roomName: room.roomName,
       meetingUrl: room.meetingUrl,
       ownerId: room.ownerId,
+      inviteCode: room.inviteCode,
       createdAt: room.createdAt,
       memberIds: room.memberIds,
     },

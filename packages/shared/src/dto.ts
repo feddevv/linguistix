@@ -40,6 +40,7 @@ export interface RoomResponseDTO {
     roomName: string;
     meetingUrl: string | null;
     ownerId: string;
+    inviteCode: string;
     createdAt: string;
     memberIds: string[];
   };

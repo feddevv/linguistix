@@ -3,6 +3,7 @@ export interface RoomRow {
   room_name: string;
   meeting_url: string | null;
   owner_id: string;
+  invite_code: string;
   created_at: string;
 }
 
@@ -11,11 +12,6 @@ export interface RoomDomain {
   roomName: string;
   meetingUrl: string | null;
   ownerId: string;
+  inviteCode: string;
   createdAt: string;
-}
-
-export interface CreateRoomParameters {
-  roomName: string;
-  meetingUrl?: string | undefined;
-  ownerId: string;
 }
