@@ -1,10 +1,11 @@
 import 'express';
+import type { AuthUser } from '../middlewares/auth.js';
 
-// Remove any
 declare global {
   namespace Express {
     interface Request {
       validatedQuery?: unknown;
+      user?: AuthUser;
     }
   }
 }

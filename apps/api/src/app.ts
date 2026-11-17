@@ -1,5 +1,6 @@
 import express, { json, type Express } from 'express';
 import { router as authRouter } from './features/auth/auth.route.js';
+import { router as roomsRouter } from './features/rooms/rooms.route.js';
 import { globalErrorHandler } from './middlewares/errors.js';
 import swaggerUi from 'swagger-ui-express';
 import fs from 'node:fs';
@@ -42,6 +43,7 @@ if (process.env.NODE_ENV === 'dev') {
 
 // Routers
 app.use('/api', authRouter);
+app.use('/api', roomsRouter);
 
 // Global Error Handler
 app.use(globalErrorHandler);

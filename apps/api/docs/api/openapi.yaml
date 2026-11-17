@@ -18,9 +18,11 @@ info:
     | `VALIDATION_ERROR`    | 413    | Request body is larger than 100 KB                         |
     | `INVALID_CREDENTIALS` | 401    | Wrong email or password                                    |
     | `TOKEN_NOT_FOUND`     | 401    | Refresh token cookie is missing                            |
-    | `INVALID_TOKEN`       | 401    | Refresh token is invalid, expired or already used          |
+    | `UNAUTHORIZED`        | 401    | Access token cookie is missing                             |
+    | `INVALID_TOKEN`       | 401    | Access or refresh token is invalid, expired or already used |
+    | `FORBIDDEN`           | 403    | The user's role is not allowed to call the endpoint        |
     | `INVALID_VERIFICATION_TOKEN` | 400 | Password reset token is invalid, expired or already used |
-    | `USER_NOT_FOUND`      | 404    | The user of the session or reset token no longer exists    |
+    | `USER_NOT_FOUND`      | 404    | The user of the session or reset token, or a referenced user, does not exist |
     | `EMAIL_IN_USE`        | 409    | A user with this email already exists                      |
     | `REQUEST_LIMIT`       | 429    | The client IP exceeded a rate limit                        |
     | `COOLDOWN`            | 429    | The same email was sent to this endpoint less than 60 seconds ago |
@@ -132,6 +134,8 @@ tags:
     description: Setting a new password through an emailed link
   - name: Google OAuth
     description: Sign-in with a Google account
+  - name: Rooms
+    description: Classrooms owned by a teacher, with their members
 
 paths:
   /api/auth/register:
@@ -740,8 +744,69 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /api/rooms:
+    post:
+      tags: [Rooms]
+      operationId: createRoom
+      security:
+        - accessTokenCookie: []
+      summary: Create a room
+      description: |
+        Creates a room owned by the authenticated teacher and adds its members.
+
+        - Requires a valid `accessToken` cookie. A missing cookie gets `401`
+          `UNAUTHORIZED`; an invalid or expired token gets `401` `INVALID_TOKEN`.
+          Call `POST /api/auth/refresh` to get a new access token.
+        - Only users with the role `teacher` can create rooms; others get `403`
+          `FORBIDDEN`. The role is read from the access token.
+        - Authentication and the role are checked **before** the body is
+          validated.
+        - Fields are validated in the order `roomName` → `meetingUrl` → `users`;
+          only the first error is returned.
+        - `roomName` is trimmed before its length is validated, and the trimmed
+          value is stored.
+        - The owner is taken from the access token, never from the body, and is
+          always added as a member. Ids in `users` are deduplicated, and the
+          owner's own id in `users` is ignored.
+        - If any id in `users` does not exist, or the owner no longer exists,
+          the response is `404` `USER_NOT_FOUND` and **nothing** is created:
+          the room and its members are inserted in a single transaction.
+        - `users` can be of any role; it is not checked whether they are
+          students.
+        - Unknown properties are silently ignored.
+        - **Throttling:** only the global limit applies.
+      requestBody:
+        $ref: '#/components/requestBodies/CreateRoomRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/CreateRoomSuccess'
+        '400':
+          $ref: '#/components/responses/CreateRoomBadRequest'
+        '401':
+          $ref: '#/components/responses/AccessUnauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/CreateRoomUserNotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   securitySchemes:
+    accessTokenCookie:
+      type: apiKey
+      in: cookie
+      name: accessToken
+      description: |
+        Access token JWT set by `POST /api/auth/login`, `POST /api/auth/refresh`
+        or a successful Google sign-in. It is valid for 15 minutes and carries
+        the user's `id`, `email` and `role`. The cookie is `HttpOnly`, so
+        browsers send it automatically.
+
     refreshTokenCookie:
       type: apiKey
       in: cookie
@@ -1049,6 +1114,8 @@ components:
         - EMAIL_ALREADY_VERIFIED
         - REQUEST_LIMIT
         - COOLDOWN
+        - UNAUTHORIZED
+        - FORBIDDEN
       example: EMAIL_IN_USE
 
     VerifyEmailRedirectErrorCode:
@@ -1105,7 +1172,104 @@ components:
           description: Message that describes the error and can be shown to a user.
           example: User with this email already exists
 
+    RoomId:
+      type: string
+      format: uuid
+      description: Room identifier (UUID v7) generated by the server.
+      example: 0199c4b1-2d4e-7f10-8a3c-5e9d7b2c1a60
+
+    RoomName:
+      type: string
+      description: |
+        Name of the room. Leading and trailing whitespace is trimmed before
+        validation; the trimmed value must be 1–100 characters long.
+      minLength: 1
+      maxLength: 100
+      example: B2 English
+
+    MeetingUrl:
+      type: string
+      format: uri
+      description: Link to the room's video meeting. Only `http` and `https` URLs are accepted.
+      example: https://meet.example.com/abc-defg-hij
+
+    CreateRoomInput:
+      type: object
+      description: Payload for creating a room.
+      required: [roomName]
+      properties:
+        roomName:
+          $ref: '#/components/schemas/RoomName'
+        meetingUrl:
+          $ref: '#/components/schemas/MeetingUrl'
+        users:
+          type: array
+          description: |
+            Ids of users to add as members besides the owner. At most 100.
+            Duplicates and the owner's own id are ignored.
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/UserId'
+
+    RoomDTO:
+      type: object
+      description: Public representation of a room.
+      required: [id, roomName, meetingUrl, ownerId, createdAt, memberIds]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/RoomId'
+        roomName:
+          $ref: '#/components/schemas/RoomName'
+        meetingUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: Link to the room's video meeting, or `null` if none was given.
+          example: https://meet.example.com/abc-defg-hij
+        ownerId:
+          $ref: '#/components/schemas/UserId'
+        createdAt:
+          type: string
+          format: date
+          description: Creation date (`YYYY-MM-DD`, server time zone).
+          example: '2026-11-16'
+        memberIds:
+          type: array
+          description: Ids of all members, including the owner. The order is not guaranteed.
+          items:
+            $ref: '#/components/schemas/UserId'
+
+    RoomResponse:
+      type: object
+      description: Response that wraps the public room representation.
+      required: [room]
+      additionalProperties: false
+      properties:
+        room:
+          $ref: '#/components/schemas/RoomDTO'
+
   requestBodies:
+    CreateRoomRequest:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateRoomInput'
+          examples:
+            ownerOnly:
+              summary: Room with only the owner
+              value:
+                roomName: B2 English
+            withMembers:
+              summary: Room with a meeting link and students
+              value:
+                roomName: B2 English
+                meetingUrl: https://meet.example.com/abc-defg-hij
+                users:
+                  - 0199c4a2-7e3b-7a51-9d2f-3b8e6c1a4f08
+                  - 0199c4a2-7e3b-7a51-9d2f-3b8e6c1a4f09
+
     RegisterRequest:
       required: true
       description: New user data. Must be a JSON object, at most 100 KB.
@@ -1204,6 +1368,109 @@ components:
       example: 42
 
   responses:
+    CreateRoomSuccess:
+      description: The room was created. No cookies are set.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RoomResponse'
+          example:
+            room:
+              id: 0199c4b1-2d4e-7f10-8a3c-5e9d7b2c1a60
+              roomName: B2 English
+              meetingUrl: https://meet.example.com/abc-defg-hij
+              ownerId: 0199c4a2-7e3b-7a51-9d2f-3b8e6c1a4f07
+              createdAt: '2026-11-16'
+              memberIds:
+                - 0199c4a2-7e3b-7a51-9d2f-3b8e6c1a4f07
+                - 0199c4a2-7e3b-7a51-9d2f-3b8e6c1a4f08
+
+    CreateRoomBadRequest:
+      description: |
+        The body is not valid JSON or fails validation. The `errorCode` is
+        always `VALIDATION_ERROR`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            roomNameMissing:
+              value:
+                errorCode: VALIDATION_ERROR
+                message: Room name is required
+            roomNameNotString:
+              value:
+                errorCode: VALIDATION_ERROR
+                message: Room name should be a string
+            roomNameTooLong:
+              value:
+                errorCode: VALIDATION_ERROR
+                message: Room name should not exceed 100 characters
+            meetingUrlInvalid:
+              value:
+                errorCode: VALIDATION_ERROR
+                message: Invalid meeting URL
+            usersNotArray:
+              value:
+                errorCode: VALIDATION_ERROR
+                message: Users should be an array
+            usersTooMany:
+              value:
+                errorCode: VALIDATION_ERROR
+                message: A room cannot have more than 100 users at creation
+            userIdInvalid:
+              value:
+                errorCode: VALIDATION_ERROR
+                message: Invalid user id
+            malformedJson:
+              value:
+                errorCode: VALIDATION_ERROR
+                message: Invalid JSON payload passed
+
+    AccessUnauthorized:
+      description: The access token cookie is missing, invalid or expired.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            missing:
+              value:
+                errorCode: UNAUTHORIZED
+                message: Authentication required
+            invalid:
+              value:
+                errorCode: INVALID_TOKEN
+                message: Invalid or expired access token
+
+    Forbidden:
+      description: The authenticated user's role is not allowed to call this endpoint.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            errorCode: FORBIDDEN
+            message: You don't have permission to perform this action
+
+    CreateRoomUserNotFound:
+      description: |
+        An id in `users` does not exist, or the owner from the access token no
+        longer exists. Nothing is created.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            memberNotFound:
+              value:
+                errorCode: USER_NOT_FOUND
+                message: One or more users do not exist
+            ownerNotFound:
+              value:
+                errorCode: USER_NOT_FOUND
+                message: This user doesn't exist
+
     RegisterSuccess:
       description: User created.
       content:

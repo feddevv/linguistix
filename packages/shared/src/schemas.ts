@@ -64,3 +64,21 @@ export const loginSchema = z.object({
   email: registerSchema.shape.email,
   password: registerSchema.shape.password,
 });
+
+export const createRoomSchema = z.object({
+  roomName: z
+    .string({
+      error: (iss) => (!iss.input ? 'Room name is required' : 'Room name should be a string'),
+    })
+    .trim()
+    .min(1, 'Room name is required')
+    .max(100, 'Room name should not exceed 100 characters'),
+  meetingUrl: z
+    .url({ protocol: /^https?$/, error: 'Invalid meeting URL' })
+    .trim()
+    .optional(),
+  users: z
+    .array(z.uuid({ error: 'Invalid user id' }), { error: 'Users should be an array' })
+    .max(100, 'A room cannot have more than 100 users at creation')
+    .optional(),
+});

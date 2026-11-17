@@ -1,5 +1,5 @@
 import z from 'zod';
-import { loginSchema, registerSchema } from './schemas.js';
+import { createRoomSchema, loginSchema, registerSchema } from './schemas.js';
 
 export type Role = 'student' | 'teacher';
 
@@ -25,6 +25,18 @@ export interface LoginResponseDTO {
   };
 }
 
+export type CreateRoomInput = z.infer<typeof createRoomSchema>;
+export interface RoomResponseDTO {
+  room: {
+    id: string;
+    roomName: string;
+    meetingUrl: string | null;
+    ownerId: string;
+    createdAt: string;
+    memberIds: string[];
+  };
+}
+
 export type ErrorCode =
   | 'SERVER_ERROR'
   | 'EMAIL_IN_USE'
@@ -41,4 +53,6 @@ export type ErrorCode =
   | 'VALIDATION_ERROR'
   | 'EMAIL_ALREADY_VERIFIED'
   | 'REQUEST_LIMIT'
-  | 'COOLDOWN';
+  | 'COOLDOWN'
+  | 'UNAUTHORIZED'
+  | 'FORBIDDEN';
