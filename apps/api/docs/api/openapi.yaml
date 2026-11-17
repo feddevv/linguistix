@@ -795,6 +795,60 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /api/rooms/{id}/members:
+    post:
+      tags: [Rooms]
+      operationId: addRoomMember
+      security:
+        - accessTokenCookie: []
+      summary: Add a member to a room
+      description: |
+        Adds one user to an existing room owned by the authenticated teacher.
+
+        - Requires a valid `accessToken` cookie. A missing cookie gets `401`
+          `UNAUTHORIZED`; an invalid or expired token gets `401` `INVALID_TOKEN`.
+        - Only users with the role `teacher` can add members; others get `403`
+          `FORBIDDEN`. The role is read from the access token.
+        - Authentication and the role are checked **before** the path and body
+          are validated. The path `id` is validated before the body.
+        - If the room does not exist, the response is `404` `ROOM_NOT_FOUND`.
+        - Only the room owner can add members; another teacher gets `403`
+          `FORBIDDEN`.
+        - If `userId` does not exist, the response is `404` `USER_NOT_FOUND`.
+        - If the user is already a member (including the owner), the response is
+          `409` `ALREADY_MEMBER` and nothing changes.
+        - The user can be of any role; it is not checked whether they are a
+          student.
+        - Unknown properties are silently ignored.
+        - **Throttling:** only the global limit applies.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/RoomId'
+      requestBody:
+        $ref: '#/components/requestBodies/AddRoomMemberRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/AddRoomMemberSuccess'
+        '400':
+          $ref: '#/components/responses/AddRoomMemberBadRequest'
+        '401':
+          $ref: '#/components/responses/AccessUnauthorized'
+        '403':
+          $ref: '#/components/responses/AddRoomMemberForbidden'
+        '404':
+          $ref: '#/components/responses/AddRoomMemberNotFound'
+        '409':
+          $ref: '#/components/responses/AlreadyMember'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   securitySchemes:
     accessTokenCookie:
@@ -1116,6 +1170,8 @@ components:
         - COOLDOWN
         - UNAUTHORIZED
         - FORBIDDEN
+        - ROOM_NOT_FOUND
+        - ALREADY_MEMBER
       example: EMAIL_IN_USE
 
     VerifyEmailRedirectErrorCode:
@@ -1211,6 +1267,14 @@ components:
           items:
             $ref: '#/components/schemas/UserId'
 
+    AddRoomMemberInput:
+      type: object
+      description: Payload for adding a member to a room.
+      required: [userId]
+      properties:
+        userId:
+          $ref: '#/components/schemas/UserId'
+
     RoomDTO:
       type: object
       description: Public representation of a room.
@@ -1269,6 +1333,15 @@ components:
                 users:
                   - 0199c4a2-7e3b-7a51-9d2f-3b8e6c1a4f08
                   - 0199c4a2-7e3b-7a51-9d2f-3b8e6c1a4f09
+
+    AddRoomMemberRequest:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AddRoomMemberInput'
+          example:
+            userId: 0199c4a2-7e3b-7a51-9d2f-3b8e6c1a4f09
 
     RegisterRequest:
       required: true
@@ -1470,6 +1543,91 @@ components:
               value:
                 errorCode: USER_NOT_FOUND
                 message: This user doesn't exist
+
+    AddRoomMemberSuccess:
+      description: The user was added. Returns the room with all its members. No cookies are set.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RoomResponse'
+          example:
+            room:
+              id: 0199c4b1-2d4e-7f10-8a3c-5e9d7b2c1a60
+              roomName: B2 English
+              meetingUrl: https://meet.example.com/abc-defg-hij
+              ownerId: 0199c4a2-7e3b-7a51-9d2f-3b8e6c1a4f07
+              createdAt: '2026-11-16'
+              memberIds:
+                - 0199c4a2-7e3b-7a51-9d2f-3b8e6c1a4f07
+                - 0199c4a2-7e3b-7a51-9d2f-3b8e6c1a4f09
+
+    AddRoomMemberBadRequest:
+      description: |
+        The path `id` is not a UUID, or the body is not valid JSON or fails
+        validation. The `errorCode` is always `VALIDATION_ERROR`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            roomIdInvalid:
+              value:
+                errorCode: VALIDATION_ERROR
+                message: Invalid room id
+            userIdMissing:
+              value:
+                errorCode: VALIDATION_ERROR
+                message: User id is required
+            userIdInvalid:
+              value:
+                errorCode: VALIDATION_ERROR
+                message: Invalid user id
+            malformedJson:
+              value:
+                errorCode: VALIDATION_ERROR
+                message: Invalid JSON payload passed
+
+    AddRoomMemberForbidden:
+      description: The caller is not a teacher, or is a teacher who does not own the room.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            notTeacher:
+              value:
+                errorCode: FORBIDDEN
+                message: You don't have permission to perform this action
+            notOwner:
+              value:
+                errorCode: FORBIDDEN
+                message: Only the room owner can add members
+
+    AddRoomMemberNotFound:
+      description: The room or the user does not exist. Nothing is changed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            roomNotFound:
+              value:
+                errorCode: ROOM_NOT_FOUND
+                message: This room doesn't exist
+            userNotFound:
+              value:
+                errorCode: USER_NOT_FOUND
+                message: This user doesn't exist
+
+    AlreadyMember:
+      description: The user is already a member of the room. Nothing is changed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            errorCode: ALREADY_MEMBER
+            message: This user is already a member of the room
 
     RegisterSuccess:
       description: User created.
