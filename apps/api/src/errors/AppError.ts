@@ -19,6 +19,8 @@ export const ERROR_STATUS_MAP: Record<ErrorCode, number> = {
   REQUEST_LIMIT: 429,
   UNAUTHORIZED: 401,
   FORBIDDEN: 403,
+  ROOM_NOT_FOUND: 404,
+  ALREADY_MEMBER: 409,
 };
 
 export class AppError extends Error {

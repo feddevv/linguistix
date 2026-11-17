@@ -1,5 +1,11 @@
 import z from 'zod';
-import { createRoomSchema, loginSchema, registerSchema } from './schemas.js';
+import {
+  addRoomMemberSchema,
+  createRoomSchema,
+  loginSchema,
+  registerSchema,
+  roomIdParamsSchema,
+} from './schemas.js';
 
 export type Role = 'student' | 'teacher';
 
@@ -26,6 +32,8 @@ export interface LoginResponseDTO {
 }
 
 export type CreateRoomInput = z.infer<typeof createRoomSchema>;
+export type RoomIdParams = z.infer<typeof roomIdParamsSchema>;
+export type AddRoomMemberInput = z.infer<typeof addRoomMemberSchema>;
 export interface RoomResponseDTO {
   room: {
     id: string;
@@ -55,4 +63,6 @@ export type ErrorCode =
   | 'REQUEST_LIMIT'
   | 'COOLDOWN'
   | 'UNAUTHORIZED'
-  | 'FORBIDDEN';
+  | 'FORBIDDEN'
+  | 'ROOM_NOT_FOUND'
+  | 'ALREADY_MEMBER';
