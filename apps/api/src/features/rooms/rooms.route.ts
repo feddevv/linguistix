@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createRoomSchema } from '@repo/shared';
+import { addRoomMemberSchema, createRoomSchema, roomIdParamsSchema } from '@repo/shared';
 import { validate } from '../../middlewares/validator.js';
 import { requireAuth, requireRole } from '../../middlewares/auth.js';
 import * as roomsController from './rooms.controller.js';
@@ -12,4 +12,12 @@ router.post(
   requireRole('teacher'),
   validate({ body: createRoomSchema }),
   roomsController.createRoom,
+);
+
+router.post(
+  '/rooms/:id/members',
+  requireAuth,
+  requireRole('teacher'),
+  validate({ params: roomIdParamsSchema, body: addRoomMemberSchema }),
+  roomsController.addMember,
 );

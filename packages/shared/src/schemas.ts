@@ -82,3 +82,13 @@ export const createRoomSchema = z.object({
     .max(100, 'A room cannot have more than 100 users at creation')
     .optional(),
 });
+
+export const roomIdParamsSchema = z.object({
+  id: z.uuid({ error: 'Invalid room id' }),
+});
+
+export const addRoomMemberSchema = z.object({
+  userId: z.uuid({
+    error: (iss) => (!iss.input ? 'User id is required' : 'Invalid user id'),
+  }),
+});

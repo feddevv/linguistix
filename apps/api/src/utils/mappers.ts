@@ -25,6 +25,7 @@ export function toRoomDomain(data: RoomRow): RoomDomain {
     roomName: data.room_name,
     meetingUrl: data.meeting_url,
     ownerId: data.owner_id,
+    inviteCode: data.invite_code,
     createdAt: data.created_at,
   };
 }

@@ -4,10 +4,14 @@ import type { ZodType } from 'zod';
 interface Schemas {
   body?: ZodType<unknown, unknown>;
   query?: ZodType<unknown, unknown>;
+  params?: ZodType<unknown, unknown>;
 }
 
 export function validate(schemas: Schemas) {
   return (req: Request, res: Response, next: NextFunction) => {
+    if (schemas.params) {
+      req.params = schemas.params.parse(req.params) as Request['params'];
+    }
     if (schemas.body) {
       req.body = schemas.body.parse(req.body);
     }

@@ -24,6 +24,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         room_name VARCHAR(100) NOT NULL,
         meeting_url TEXT,
         owner_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+        invite_code VARCHAR(8) NOT NULL UNIQUE,
         created_at DATE NOT NULL DEFAULT CURRENT_DATE
       );
 

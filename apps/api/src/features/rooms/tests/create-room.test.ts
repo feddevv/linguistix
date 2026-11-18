@@ -2,6 +2,7 @@ import { describe, it, beforeEach, afterAll, expect, vi } from 'vitest';
 import request from 'supertest';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
+import { randomBytes } from 'node:crypto';
 import { app } from '../../../app.js';
 import { pg } from '../../../lib/pg.js';
 import {
@@ -17,6 +18,11 @@ const ENDPOINT = '/api/rooms';
 vi.mock('../../../lib/transporter.ts', () => ({
   transporter: { sendMail: () => {} },
 }));
+
+vi.mock('node:crypto', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:crypto')>();
+  return { ...actual, randomBytes: vi.fn(actual.randomBytes) };
+});
 
 const teacherData = {
   firstName: 'Grace',
@@ -87,6 +93,7 @@ describe('POST /api/rooms', () => {
           roomName: 'B2 English',
           meetingUrl: null,
           ownerId: teacher.id,
+          inviteCode: expect.stringMatching(/^[0-9a-f]{8}$/),
           createdAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
           memberIds: [teacher.id],
         },
@@ -241,6 +248,43 @@ describe('POST /api/rooms', () => {
       expect(await countRooms()).toBe(0);
       const { rows } = await pg.query('SELECT COUNT(*) FROM room_members');
       expect(Number(rows[0].count)).toBe(0);
+    });
+  });
+
+  describe('invite code', () => {
+    it('retries with a new code when the generated one is taken', async () => {
+      const { accessToken } = await seedTeacher();
+      const first = await createRoom({ roomName: 'First' }, accessToken).expect(201);
+      const takenCode: string = first.body.room.inviteCode;
+
+      vi.mocked(randomBytes).mockImplementationOnce(() => Buffer.from(takenCode, 'hex'));
+
+      const res = await createRoom({ roomName: 'Second' }, accessToken).expect(201);
+
+      expect(res.body.room.inviteCode).toMatch(/^[0-9a-f]{8}$/);
+      expect(res.body.room.inviteCode).not.toBe(takenCode);
+      expect(await countRooms()).toBe(2);
+    });
+
+    it('returns 500 and creates nothing when every attempt collides', async () => {
+      const { accessToken } = await seedTeacher();
+      const first = await createRoom({ roomName: 'First' }, accessToken).expect(201);
+      const takenCode: string = first.body.room.inviteCode;
+
+      const randomBytesMock = vi.mocked(randomBytes);
+      const original = randomBytesMock.getMockImplementation()!;
+      randomBytesMock.mockImplementation(() => Buffer.from(takenCode, 'hex'));
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      try {
+        const res = await createRoom({ roomName: 'Second' }, accessToken).expect(500);
+
+        expect(res.body.errorCode).toBe('SERVER_ERROR');
+        expect(await countRooms()).toBe(1);
+      } finally {
+        randomBytesMock.mockImplementation(original);
+        consoleError.mockRestore();
+      }
     });
   });
 });
